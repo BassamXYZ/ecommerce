@@ -1,0 +1,44 @@
+{% extends 'base.html' %}
+
+{% block title %}{{ name }}{% endblock %}
+
+{% block content %}
+<h2 class="text-center">{{ name }}</h2>
+<div class="d-flex justify-content-between">
+  {% if not prev_page %}
+  <a href="#" disabled class="btn btn-outline-info disabled">Prev</a>
+  {% else %}
+  <a href="/category/{{ name }}?page={{ prev_page }}" disabled class="btn btn-outline-info">Prev</a>
+  {% endif %}
+  {% if not next_page %}
+  <a href="#" disabled class="btn btn-outline-info disabled">Next</a>
+  {% else %}
+  <a href="/category/{{ name }}?page={{ next_page }}" disabled class="btn btn-outline-info">Next</a>
+  {% endif %}
+</div>
+<div class="row">
+  {% for product in products %}
+  <div class="card mx-auto mt-2 p-2" style="width: 18rem;">
+    <img src="{{ product.image.url }}" class="card-img-top" alt="{{ product.description }}">
+    <div class="card-body">
+      <h5 class="card-title">{{ product.name }}</h5>
+      <p class="card-text">{{ product.description }}</p>
+      <p class="card-text text-success-emphasis border border-success-subtle rounded w-25 text-center">{{ product.price }} $</p>
+      <a href="/product/{{ name }}/{{ product.name }}" class="btn btn-outline-info">shop it</a>
+    </div>
+  </div>
+  {% endfor %}
+  <div class="d-flex justify-content-between">
+    {% if not prev_page %}
+      <a href="#" disabled class="btn btn-outline-info disabled">Prev</a>
+    {% else %}
+      <a href="/category/{{ name }}?page={{ prev_page }}" disabled class="btn btn-outline-info">Prev</a>
+    {% endif %}
+    {% if not next_page %}
+    <a href="#" disabled class="btn btn-outline-info disabled">Next</a>
+    {% else %}
+    <a href="/category/{{ name }}?page={{ next_page }}" disabled class="btn btn-outline-info">Next</a>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

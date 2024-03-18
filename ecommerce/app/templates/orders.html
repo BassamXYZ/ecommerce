@@ -1,0 +1,89 @@
+{% extends 'base.html' %}
+
+{% block title %}Welcome{% endblock %}
+
+{% block content %}
+<div id="orders">
+{% for order in orders %}
+  <div id="{{ order.id }}" class="card m-3">
+    <div class="card-header">
+      <div>
+        Email: {{ order.order.email }}
+      </div>
+      <div>
+        Address: {{ order.order.address }}
+      </div>
+      <div>
+        Total: {{ order.order.total }}
+      </div>
+    </div>
+    <ul class="list-group list-group-flush">
+      {% for item in order.order.items %}
+      <li class="list-group-item">
+        <div>
+          Product Name: {{ item.name }}
+        </div>
+        <div>
+          Quantity: {{ item.qty }}
+        </div>
+        <div>
+          Price: {{ item.price }}
+        </div>
+      </li>
+      {% endfor %}
+    </ul>
+    <div class="card-footer">
+      <button class="btn btn-info" onclick="done({{ order.id }})">Done</button>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+<script>
+  function getCookie(name) {
+    let cookieValue = null;
+    if (document.cookie && document.cookie !== '') {
+      const cookies = document.cookie.split(';');
+      for (let i = 0; i < cookies.length; i++) {
+        const cookie = cookies[i].trim();
+        if (cookie.substring(0, name.length + 1) === (name + '=')) {
+          cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+          break;
+        }
+      }
+    }
+    return cookieValue;
+  }
+  const csrftoken = getCookie('csrftoken');
+
+  function done(orderId) {
+    var url = "{% url 'dashboard' %}";
+    fetch(url, {
+      method: "POST",
+      headers: {
+        'Content-type': "application/json",
+        'X-CSRFToken': csrftoken,
+      },
+      body: JSON.stringify({ 'order_id': orderId })
+    }).then(res => res.json()).then(data => {
+      document.getElementById(orderId).remove();
+
+      if (!data) {
+        return
+      }
+
+      let html = '<div id="' + data.id + '" class="card m-3"><div class= "card-header" ><div>Email: '
+        + data.order.email + '</div><div>Address: ' + data.order.address + '</div><div>Total: ' + data.order.total
+        + '</div></div><ul class="list-group list-group-flush">';
+      
+      data.order.items.forEach(item => {
+        html += '<li class="list-group-item"><div>Product Name: ' + item.name + '</div><div>Quantity: '
+          + item.qty + '</div><div>Price: ' + item.price + '</div></li>'
+      });
+      
+      html += '</ul><div class="card-footer"><button class="btn btn-info" onclick="done(' + data.id + ')">Done</button></div></div>';
+
+      document.getElementById("orders").innerHTML += html;
+    })
+  }
+</script>
+{% endblock %}

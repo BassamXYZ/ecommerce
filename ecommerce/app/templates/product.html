@@ -1,0 +1,50 @@
+{% extends 'base.html' %}
+
+{% block title %}{{ product.name }}{% endblock %}
+
+{% block content %}
+<h2 class="text-center" id="name">{{ product.name }}</h2>
+<div class="card mt-2 p-2" >
+  <img src="{{ product.image.url }}" class="card-img-top card-img-bottom" alt="{{ product.description }}" id="img">
+</div>
+<div class="container text-center mt-2 p-2">
+  <div class="row">
+    <div class="col">
+      <p class="text-center" id="price">{{ product.price }}</p>
+      <a href="/category/{{ product.catigory.name }}" class="btn btn-outline-info">{{ product.catigory.name }}</a>
+      <button class="btn btn-outline-info" onclick="addToCart('{{ product.id }}')">Add to cart</button>
+    </div>
+    <div class="col">
+      <p class="card-text">{{ product.description }}</p>
+    </div>
+  </div>
+</div>
+<script>
+  var cart = [];
+  if (localStorage.cart) {
+    cart = JSON.parse(localStorage.cart);
+  }
+
+  function saveCart() {
+    if (window.localStorage) {
+      localStorage.cart = JSON.stringify(cart);
+    }
+  }
+  
+  function addToCart(id) {
+    var price = Number(document.getElementById("price").textContent);
+    var name = document.getElementById("name").textContent;
+    var img = document.getElementById("img").getAttribute("src");
+
+    for (var i in cart) {
+      if (cart[i].Product == name) {
+        return;
+      }
+    }
+
+    var item = { Id: id, Product: name, Price: price, Qty: 1, Img: img };
+    cart.push(item);
+    saveCart();
+    }
+</script>
+{% endblock %}

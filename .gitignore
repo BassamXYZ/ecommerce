@@ -1,0 +1,16 @@
+venv
+media
+__pycache__
+migrations
+*.sqlite3
+
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+.env

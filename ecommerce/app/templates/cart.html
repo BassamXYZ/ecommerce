@@ -1,0 +1,165 @@
+{% extends 'base.html' %}
+
+{% block title %}Cart{% endblock %}
+
+{% block content %}
+<table class="table table-info table-borderless text-center align-middle">
+  <thead>
+    <tr>
+      <td>Name</td>
+      <td>Img</td>
+      <td>Price</td>
+      <td>Qty</td>
+      <td>Total Price</td>
+      <td>Delete</td>
+      <td> + </td>
+      <td> - </td>
+    </tr>
+  </thead>
+  <tbody id="cartBody"></tbody>
+</table>
+<div class="text-center d-flex flex-column align-items-center mb-3">
+  <div>
+    <div class="row m-1">
+      <input id="firstName" type="text" class="col-auto" placeholder="First Name" required>
+      <input id="lastName" type="text" class="col-auto" placeholder="Last Name" required>
+    </div>
+    <div class="row m-1">
+      <input id="email" type="text" placeholder="Email" required>
+    </div>
+    <div class="row m-1">
+      <input id="street" type="text" class="col-auto" placeholder="Street Address" required>
+      <input id="city" type="text" class="col-auto" placeholder="City" required>
+    </div>
+    <div class="row m-1">
+      <input id="postalCode" type="text" class="col-auto" placeholder="Postal Code" required>
+      <input id="country" type="text" class="col-auto" placeholder="Country" required>
+    </div>
+  </div>
+  <div id="paypal-button-container" class="d-flex"></div>
+</div>
+<script src="https://www.paypal.com/sdk/js?client-id=test&currency=USD"></script>
+<script>
+var total;
+var cart = [];
+if (localStorage.cart) {
+  cart = JSON.parse(localStorage.cart);
+}
+showCart()
+
+function saveCart() {
+  if (window.localStorage) {
+    localStorage.cart = JSON.stringify(cart);
+  }
+}
+
+function deleteItem(index) {
+  cart.splice(index, 1);
+  saveCart();
+  showCart();
+}
+
+function showCart() {
+  var html = ""
+  for (var i in cart) {
+    var item = cart[i];
+    var row = "<tr><td>" + item.Product + "</td><td><img width='150px' src=" +
+      item.Img + "></td><td>" +
+      item.Price + "</td><td>" + item.Qty + "</td><td>"
+      + item.Qty * item.Price + "</td><td>"
+      + "<button type='button' class='btn btn-danger' onclick='deleteItem(" + i + ")'>Delete</button></td><td>"
+      + "<button type='button' class='btn btn-info' onclick='incQty(" + i + ")'> + </button></td><td>"
+      + "<button type='button' class='btn btn-info' onclick='decQty(" + i + ")'> - </button></td></tr>";
+      html += row;
+    }
+  
+  total = 0;
+  cart.forEach(element => {
+    total += element.Price * element.Qty
+  });
+
+  document.getElementById("cartBody").innerHTML = html;
+}
+
+
+function incQty(index) {
+  cart[index].Qty++;
+  saveCart();
+  showCart();
+}
+
+function decQty(index) {
+  if (cart[index].Qty == 1) {
+    deleteItem(index);
+    return;
+  }
+  cart[index].Qty--;
+  saveCart();
+  showCart();
+}
+
+/*get csrftoken cookie*/
+
+function getCookie(name) {
+  let cookieValue = null;
+  if (document.cookie && document.cookie !== '') {
+    const cookies = document.cookie.split(';');
+    for (let i = 0; i < cookies.length; i++) {
+      const cookie = cookies[i].trim();
+      // Does this cookie string begin with the name we want?
+      if (cookie.substring(0, name.length + 1) === (name + '=')) {
+        cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+        break;
+      }
+    }
+  }
+  return cookieValue;
+}
+const csrftoken = getCookie('csrftoken');
+
+/*paypal payment*/
+
+function orderCompleted(params) {
+  var firstName = document.getElementById("firstName").value;
+  var lastName = document.getElementById("lastName").value;
+  var street = document.getElementById("street").value;
+  var city = document.getElementById("city").value;
+  var postalCode = document.getElementById("postalCode").value;
+  var country = document.getElementById("country").value;
+
+  var url = "{% url 'cart' %}";
+  var order = cart.map((item) => item = {'id':item.Id,'price':item.Price, 'qty':item.Qty, 'name':item.Product});
+  var email = document.getElementById("email").value;
+  var address = firstName + " " + lastName + ", " + street + ", " + city + ", " + postalCode + ", " + country;
+
+  fetch(url, {
+    method: "POST",
+    headers: {
+      'Content-type': "application/json",
+      'X-CSRFToken': csrftoken,
+    },
+    body: JSON.stringify({'items':order, 'email':email, 'address':address, 'total':total})
+  })
+}
+
+paypal.Buttons({
+  createOrder: function(data, actions) {
+    return actions.order.create({
+      purchase_units: [{
+        amount: {
+          value: total.toString()
+        }
+      }]
+    });
+  },
+
+  onApprove: function(data, actions) {
+    return actions.order.capture().then(function(orderData) {
+      var transaction = orderData.purchase_units[0].payments.captures[0];
+      orderCompleted();
+      localStorage.removeItem("cart")
+    });
+  }
+}).render("#paypal-button-container");
+</script>
+{% endblock %}
