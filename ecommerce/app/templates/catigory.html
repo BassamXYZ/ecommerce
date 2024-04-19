@@ -18,12 +18,12 @@
 </div>
 <div class="row">
   {% for product in products %}
-  <div class="card mx-auto mt-2 p-2" style="width: 18rem;">
+  <div class="card mx-auto mt-2 p-2" style="width: 14rem;">
     <img src="{{ product.image.url }}" class="card-img-top" alt="{{ product.description }}">
     <div class="card-body">
       <h5 class="card-title">{{ product.name }}</h5>
       <p class="card-text">{{ product.description }}</p>
-      <p class="card-text text-success-emphasis border border-success-subtle rounded w-25 text-center">{{ product.price }} $</p>
+      <p class="card-text text-success-emphasis border border-success-subtle rounded text-center">{{ product.price }} $</p>
       <a href="/product/{{ name }}/{{ product.name }}" class="btn btn-outline-info">shop it</a>
     </div>
   </div>
