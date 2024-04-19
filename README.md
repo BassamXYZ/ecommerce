@@ -16,7 +16,7 @@ If you have any feedback, please reach out to us at <bassam.essam.ahmad@gmail.co
 Clone the project
 
 ```bash
-  git clone https://github.com/BassamXYZ/url-shortener.git
+  git clone https://github.com/BassamXYZ/ecommerce.git
 ```
 
 Go to the project directory
