@@ -3,10 +3,6 @@
 
 This is a training project that built with Django web framework.
 
-## Screenshots
-
-![App Screenshot](./screen%20shot.png)
-
 ## Feedback
 
 If you have any feedback, please reach out to us at <bassam.essam.ahmad@gmail.com>
