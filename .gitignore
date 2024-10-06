@@ -1,4 +1,6 @@
-venv
+.env
+.venv
+
 media
 __pycache__
 migrations
@@ -13,4 +15,3 @@ migrations
 *.njsproj
 *.sln
 *.sw?
-.env
