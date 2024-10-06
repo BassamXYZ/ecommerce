@@ -1,4 +1,5 @@
 from django.db import models
+from datetime import datetime
 
 
 class Category(models.Model):
@@ -13,13 +14,25 @@ class Product(models.Model):
     description = models.TextField()
     price = models.FloatField()
     image = models.ImageField(default=0)
-    sales = models.IntegerField(default=0)
-    catigory = models.ForeignKey(Category, on_delete=models.CASCADE)
+    catigory = models.ForeignKey(Category, on_delete=models.SET_NULL)
+    quantity = models.IntegerField(default=0)
 
     def __str__(self):
         return self.name
 
 
+class Item(models.Model):
+    product = models.ForeignKey(Product)
+    quantity = models.IntegerField()
+
+
 class Order(models.Model):
-    order = models.JSONField()
-    done = models.BooleanField(default=False)
+    client_name = models.CharField(max_length=200)
+    client_country = models.CharField(max_length=50)
+    client_city = models.CharField(max_length=50)
+    client_street = models.CharField(max_length=50)
+    client_postal_code = models.CharField(max_length=50)
+    items = models.ManyToManyField(Item)
+    total = models.FloatField()
+    shipped = models.BooleanField(default=False)
+    date = models.DateField(default=datetime.now)
