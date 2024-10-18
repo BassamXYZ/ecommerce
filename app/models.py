@@ -28,6 +28,7 @@ class Item(models.Model):
 
 class Order(models.Model):
     client_name = models.CharField(max_length=200)
+    client_email = models.EmailField(max_length=50)
     client_country = models.CharField(max_length=50)
     client_city = models.CharField(max_length=50)
     client_street = models.CharField(max_length=50)

@@ -122,15 +122,15 @@ const csrftoken = getCookie('csrftoken');
 function orderCompleted(params) {
   var firstName = document.getElementById("firstName").value;
   var lastName = document.getElementById("lastName").value;
+  var fullName = firstName + " " + lastName;
   var street = document.getElementById("street").value;
   var city = document.getElementById("city").value;
   var postalCode = document.getElementById("postalCode").value;
   var country = document.getElementById("country").value;
+  var email = document.getElementById("email").value;
 
   var url = "{% url 'cart' %}";
-  var order = cart.map((item) => item = {'id':item.Id,'price':item.Price, 'qty':item.Qty, 'name':item.Product});
-  var email = document.getElementById("email").value;
-  var address = firstName + " " + lastName + ", " + street + ", " + city + ", " + postalCode + ", " + country;
+  var items = cart.map((item) => item = {'product':item.Id, 'quantity':item.Qty});
 
   fetch(url, {
     method: "POST",
@@ -138,7 +138,15 @@ function orderCompleted(params) {
       'Content-type': "application/json",
       'X-CSRFToken': csrftoken,
     },
-    body: JSON.stringify({'items':order, 'email':email, 'address':address, 'total':total})
+    body: JSON.stringify({
+      'client_name':fullName,
+      'client_email':email,
+      'client_country': country,
+      'client_city': city,
+      'client_street': street,
+      'client_postal_code': postalCode,
+      'items':items,
+})
   })
 }
 
