@@ -12,6 +12,11 @@
     <div class="col">
       <p class="text-center" id="price">{{ product.price }}</p>
       <a href="/category/{{ product.catigory.name }}" class="btn btn-outline-info">{{ product.catigory.name }}</a>
+      <div>
+        <button class="btn btn-outline-info" onclick="decQty()">-</button>
+        <p class="text-center" id="qty">1</p>
+        <button class="btn btn-outline-info" onclick="encQty()">+</button>
+      </div>
       <button class="btn btn-outline-info" onclick="addToCart('{{ product.id }}')">Add to cart</button>
     </div>
     <div class="col">
@@ -20,6 +25,21 @@
   </div>
 </div>
 <script>
+  var qty = document.getElementById("qty");
+  var qtyValue = 1;
+
+  function decQty() {
+    if (qtyValue > 1) {
+      qtyValue--;
+    }
+    qty.innerHTML = qtyValue;
+  }
+
+  function encQty() {
+    qtyValue++;
+    qty.innerHTML = qtyValue;
+  }
+
   var cart = [];
   if (localStorage.cart) {
     cart = JSON.parse(localStorage.cart);
@@ -32,19 +52,27 @@
   }
   
   function addToCart(id) {
+    var productIndex = -1;
     var price = Number(document.getElementById("price").textContent);
     var name = document.getElementById("name").textContent;
     var img = document.getElementById("img").getAttribute("src");
 
+    var item = { Id: id, Product: name, Price: price, Qty: qtyValue, Img: img };
+
     for (var i in cart) {
       if (cart[i].Product == name) {
-        return;
+        productIndex = i;
+        break;
       }
     }
 
-    var item = { Id: id, Product: name, Price: price, Qty: 1, Img: img };
-    cart.push(item);
-    saveCart();
+    if (productIndex != -1) {
+      cart[i] = item;
+    } else {
+      cart.push(item);
     }
+
+    saveCart();
+  }
 </script>
 {% endblock %}
