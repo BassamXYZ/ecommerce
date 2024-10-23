@@ -1,6 +1,8 @@
 import json
+import binascii
 from math import ceil
-from django.shortcuts import render
+from hashlib import sha256
+from django.shortcuts import render, redirect
 from django.http import JsonResponse, HttpResponse
 from django.contrib.auth.decorators import login_required
 from django.forms.models import model_to_dict
@@ -44,8 +46,25 @@ def cart(request):
     if request.method == "POST":
         order = Order(order=json.loads(request.body))
         order.save()
+        return redirect("checkout", foo="bar")
     categories = Category.objects.all()
     return render(request, 'cart.html', {"categories": categories})
+
+
+def checkout(request):
+    m_shop = "12345"
+    m_orderid = "1"
+    m_amount = "1.00"
+    m_curr = "USD"
+    description = "Test"
+    m_key = "Secret key"
+    m_desc = binascii.b2a_base64(description.encode('utf8'))[:-1].decode()
+    list_of_value_for_sign = map(
+        str, [m_shop, m_orderid, m_amount, m_curr, m_desc, m_key])
+    result_string = ":".join(list_of_value_for_sign)
+    sign_hash = sha256(result_string)
+    sign = sign_hash.hexdigest().upper()
+    return render(request, 'checkout.html')
 
 
 @login_required

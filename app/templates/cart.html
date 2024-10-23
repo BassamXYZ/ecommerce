@@ -36,138 +36,120 @@
       <input id="country" type="text" class="col-auto" placeholder="Country" required>
     </div>
   </div>
-  <div id="paypal-button-container" class="d-flex"></div>
+  <div class="d-flex" onclick="orderCompleted">Complete Order</div>
 </div>
-<script src="https://www.paypal.com/sdk/js?client-id=test&currency=USD"></script>
 <script>
-var total;
-var cart = [];
-if (localStorage.cart) {
-  cart = JSON.parse(localStorage.cart);
-}
-showCart()
-
-function saveCart() {
-  if (window.localStorage) {
-    localStorage.cart = JSON.stringify(cart);
+  var total;
+  var cart = [];
+  if (localStorage.cart) {
+    cart = JSON.parse(localStorage.cart);
   }
-}
+  showCart()
 
-function deleteItem(index) {
-  cart.splice(index, 1);
-  saveCart();
-  showCart();
-}
+  function saveCart() {
+    if (window.localStorage) {
+      localStorage.cart = JSON.stringify(cart);
+    }
+  }
 
-function showCart() {
-  var html = ""
-  for (var i in cart) {
-    var item = cart[i];
-    var row = "<tr><td>" + item.Product + "</td><td><img width='150px' src=" +
-      item.Img + "></td><td>" +
-      item.Price + "</td><td>" + item.Qty + "</td><td>"
-      + item.Qty * item.Price + "</td><td>"
-      + "<button type='button' class='btn btn-danger' onclick='deleteItem(" + i + ")'>Delete</button></td><td>"
-      + "<button type='button' class='btn btn-info' onclick='incQty(" + i + ")'> + </button></td><td>"
-      + "<button type='button' class='btn btn-info' onclick='decQty(" + i + ")'> - </button></td></tr>";
+  function deleteItem(index) {
+    cart.splice(index, 1);
+    saveCart();
+    showCart();
+  }
+
+  function showCart() {
+    var html = ""
+    for (var i in cart) {
+      var item = cart[i];
+      var row = "<tr><td>" + item.Product + "</td><td><img width='150px' src=" +
+        item.Img + "></td><td>" +
+        item.Price + "</td><td>" + item.Qty + "</td><td>"
+        + item.Qty * item.Price + "</td><td>"
+        + "<button type='button' class='btn btn-danger' onclick='deleteItem(" + i + ")'>Delete</button></td><td>"
+        + "<button type='button' class='btn btn-info' onclick='incQty(" + i + ")'> + </button></td><td>"
+        + "<button type='button' class='btn btn-info' onclick='decQty(" + i + ")'> - </button></td></tr>";
       html += row;
     }
-  
-  total = 0;
-  cart.forEach(element => {
-    total += element.Price * element.Qty
-  });
 
-  document.getElementById("cartBody").innerHTML = html;
-}
+    total = 0;
+    cart.forEach(element => {
+      total += element.Price * element.Qty
+    });
 
-
-function incQty(index) {
-  cart[index].Qty++;
-  saveCart();
-  showCart();
-}
-
-function decQty(index) {
-  if (cart[index].Qty == 1) {
-    deleteItem(index);
-    return;
+    document.getElementById("cartBody").innerHTML = html;
   }
-  cart[index].Qty--;
-  saveCart();
-  showCart();
-}
 
-/*get csrftoken cookie*/
 
-function getCookie(name) {
-  let cookieValue = null;
-  if (document.cookie && document.cookie !== '') {
-    const cookies = document.cookie.split(';');
-    for (let i = 0; i < cookies.length; i++) {
-      const cookie = cookies[i].trim();
-      // Does this cookie string begin with the name we want?
-      if (cookie.substring(0, name.length + 1) === (name + '=')) {
-        cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
-        break;
+  function incQty(index) {
+    cart[index].Qty++;
+    saveCart();
+    showCart();
+  }
+
+  function decQty(index) {
+    if (cart[index].Qty == 1) {
+      deleteItem(index);
+      return;
+    }
+    cart[index].Qty--;
+    saveCart();
+    showCart();
+  }
+
+  /*get csrftoken cookie*/
+
+  function getCookie(name) {
+    let cookieValue = null;
+    if (document.cookie && document.cookie !== '') {
+      const cookies = document.cookie.split(';');
+      for (let i = 0; i < cookies.length; i++) {
+        const cookie = cookies[i].trim();
+        // Does this cookie string begin with the name we want?
+        if (cookie.substring(0, name.length + 1) === (name + '=')) {
+          cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+          break;
+        }
       }
     }
+    return cookieValue;
   }
-  return cookieValue;
-}
-const csrftoken = getCookie('csrftoken');
+  const csrftoken = getCookie('csrftoken');
 
-/*paypal payment*/
+  /*paypal payment*/
 
-function orderCompleted(params) {
-  var firstName = document.getElementById("firstName").value;
-  var lastName = document.getElementById("lastName").value;
-  var fullName = firstName + " " + lastName;
-  var street = document.getElementById("street").value;
-  var city = document.getElementById("city").value;
-  var postalCode = document.getElementById("postalCode").value;
-  var country = document.getElementById("country").value;
-  var email = document.getElementById("email").value;
+  function orderCompleted(params) {
+    var firstName = document.getElementById("firstName").value;
+    var lastName = document.getElementById("lastName").value;
+    var fullName = firstName + " " + lastName;
+    var street = document.getElementById("street").value;
+    var city = document.getElementById("city").value;
+    var postalCode = document.getElementById("postalCode").value;
+    var country = document.getElementById("country").value;
+    var email = document.getElementById("email").value;
 
-  var url = "{% url 'cart' %}";
-  var items = cart.map((item) => item = {'product':item.Id, 'quantity':item.Qty});
+    var url = "{% url 'cart' %}";
+    var items = cart.map((item) => item = { 'product': item.Id, 'quantity': item.Qty });
 
-  fetch(url, {
-    method: "POST",
-    headers: {
-      'Content-type': "application/json",
-      'X-CSRFToken': csrftoken,
-    },
-    body: JSON.stringify({
-      'client_name':fullName,
-      'client_email':email,
-      'client_country': country,
-      'client_city': city,
-      'client_street': street,
-      'client_postal_code': postalCode,
-      'items':items,
-})
-  })
-}
+    localStorage.removeItem("cart");
 
-paypal.Buttons({
-  createOrder: function(data, actions) {
-    return actions.order.create({
-      purchase_units: [{
-        amount: {
-          value: total.toString()
-        }
-      }]
-    });
-  },
-
-  onApprove: function(data, actions) {
-    return actions.order.capture().then(function(orderData) {
-      var transaction = orderData.purchase_units[0].payments.captures[0];
-      orderCompleted();
-      localStorage.removeItem("cart")
-    });
+    fetch(url, {
+      method: "POST",
+      redirect: "follow",
+      headers: {
+        'Content-type': "application/json",
+        'X-CSRFToken': csrftoken,
+      },
+      body: JSON.stringify({
+        'client_name': fullName,
+        'client_email': email,
+        'client_country': country,
+        'client_city': city,
+        'client_street': street,
+        'client_postal_code': postalCode,
+        'items': items,
+      })
+    })
   }
-}).render("#paypal-button-container");
 </script>
 {% endblock %}
