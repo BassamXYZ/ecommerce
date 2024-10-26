@@ -46,25 +46,26 @@ def cart(request):
     if request.method == "POST":
         order = Order(order=json.loads(request.body))
         order.save()
-        return redirect("checkout", foo="bar")
+        return redirect("checkout", order_id=order.id)
     categories = Category.objects.all()
     return render(request, 'cart.html', {"categories": categories})
 
 
-def checkout(request):
+def checkout(request, order_id):
+    order = Order.objects.filter(id=order_id)
     m_shop = "12345"
-    m_orderid = "1"
-    m_amount = "1.00"
+    m_orderid = order_id
+    m_amount = order[0].total
     m_curr = "USD"
     description = "Test"
-    m_key = "Secret key"
     m_desc = binascii.b2a_base64(description.encode('utf8'))[:-1].decode()
+    m_key = "kt76y9C46D4FL6T4F1fLF4f78fT"
     list_of_value_for_sign = map(
         str, [m_shop, m_orderid, m_amount, m_curr, m_desc, m_key])
     result_string = ":".join(list_of_value_for_sign)
     sign_hash = sha256(result_string)
-    sign = sign_hash.hexdigest().upper()
-    return render(request, 'checkout.html')
+    m_sign = sign_hash.hexdigest().upper()
+    return render(request, 'checkout.html', {"m_orderid": m_orderid, "m_amount": m_amount, "m_desc": m_desc, "m_sign": m_sign})
 
 
 @login_required
