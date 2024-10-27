@@ -116,8 +116,6 @@
   }
   const csrftoken = getCookie('csrftoken');
 
-  /*paypal payment*/
-
   function orderCompleted(params) {
     var firstName = document.getElementById("firstName").value;
     var lastName = document.getElementById("lastName").value;
@@ -129,7 +127,7 @@
     var email = document.getElementById("email").value;
 
     var url = "{% url 'cart' %}";
-    var items = cart.map((item) => item = { 'product': item.Id, 'quantity': item.Qty });
+    var items = cart.map((item) => item = { 'product_id': item.Id, 'quantity': item.Qty });
 
     localStorage.removeItem("cart");
 

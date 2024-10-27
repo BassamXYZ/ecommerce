@@ -7,7 +7,7 @@ from django.http import JsonResponse, HttpResponse
 from django.contrib.auth.decorators import login_required
 from django.forms.models import model_to_dict
 
-from .models import Category, Product, Order
+from .models import Category, Product, Order, Item
 
 
 def index(request):
@@ -43,16 +43,44 @@ def search(request):
 
 
 def cart(request):
+    """
+        'client_name': fullName,
+        'client_email': email,
+        'client_country': country,
+        'client_city': city,
+        'client_street': street,
+        'client_postal_code': postalCode,
+        'items': [{'product_id': item.Id, 'quantity': item.Qty}],
+    """
+
     if request.method == "POST":
-        order = Order(order=json.loads(request.body))
+        data = json.loads(request.body)
+        items = []
+        total = 0
+        for item in data["items"]:
+            product = Product.objects.get(id=item["product_id"])
+            db_item = Item(product=product, quantity=item["quantity"])
+            db_item.save()
+            items.append(db_item)
+            total = total + product.price * item["quantity"]
+
+        order = Order(client_name=data["client_name"],
+                      client_email=data["client_email"],
+                      client_country=data["client_country"],
+                      client_city=data["client_city"],
+                      client_street=data["client_street"],
+                      client_postal_code=data["client_postal_code"],
+                      total=total,
+                      items=items)
         order.save()
+
         return redirect("checkout", order_id=order.id)
     categories = Category.objects.all()
     return render(request, 'cart.html', {"categories": categories})
 
 
 def checkout(request, order_id):
-    order = Order.objects.filter(id=order_id)
+    order = Order.objects.get(id=order_id)
     m_shop = "12345"
     m_orderid = order_id
     m_amount = order[0].total
