@@ -87,6 +87,34 @@ def checkout(request, order_id):
     return render(request, 'checkout.html', {"m_orderid": m_orderid, "m_amount": m_amount, "m_desc": m_desc, "m_sign": m_sign})
 
 
+def payment_processor(request):
+    ip = get_client_ip(request)
+    if ip not in ['185.71.65.92', '185.71.65.189', '149.202.17.210']:
+        return
+    
+    if 'm_operation_id' in request.POST and 'm_sign' in request.POST:
+        m_key = 'kt76y9C46D4FL6T4F1fLF4f78fT'
+        list_of_value_for_sign = map(str, [request.POST.get('m_operation_id'),
+                                           request.POST.get('m_operation_ps'),
+                                           request.POST.get('m_operation_date'),
+                                           request.POST.get('m_operation_pay_date'),
+                                           request.POST.get('m_shop'),
+                                           request.POST.get('m_orderid'),
+                                           request.POST.get('m_amount'),
+                                           request.POST.get('m_curr'),
+                                           request.POST.get('m_desc'),
+                                           request.POST.get('m_status'),
+                                           m_key])
+        result_string = ":".join(list_of_value_for_sign)
+        sign_hash = sha256(result_string)
+        m_sign = sign_hash.hexdigest().upper()
+        if request.POST.get('m_sign') == sign_hash and request.POST.get('m_status') == 'success':
+            # Here you can mark the invoice as paid or transfer funds to your customer
+            return
+
+    return
+
+
 @login_required
 def dashboard(request):
     if request.method == "POST":
