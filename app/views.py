@@ -8,6 +8,7 @@ from django.contrib.auth.decorators import login_required
 from django.forms.models import model_to_dict
 
 from .models import Category, Product, Order, Item
+from .functions import get_client_ip
 
 
 def index(request):
@@ -43,16 +44,6 @@ def search(request):
 
 
 def cart(request):
-    """
-        'client_name': fullName,
-        'client_email': email,
-        'client_country': country,
-        'client_city': city,
-        'client_street': street,
-        'client_postal_code': postalCode,
-        'items': [{'product_id': item.Id, 'quantity': item.Qty}],
-    """
-
     if request.method == "POST":
         data = json.loads(request.body)
         items = []
