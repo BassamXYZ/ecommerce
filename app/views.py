@@ -6,6 +6,7 @@ from django.shortcuts import render, redirect
 from django.http import JsonResponse, HttpResponse
 from django.contrib.auth.decorators import login_required
 from django.forms.models import model_to_dict
+from django.conf import settings
 
 from .models import Category, Product, Order, Item
 from .functions import get_client_ip
@@ -72,13 +73,13 @@ def cart(request):
 
 def checkout(request, order_id):
     order = Order.objects.get(id=order_id)
-    m_shop = "12345"
+    m_shop = settings.PAYEER_SHOP_ID
     m_orderid = order_id
     m_amount = order[0].total
     m_curr = "USD"
     description = "Test"
     m_desc = binascii.b2a_base64(description.encode('utf8'))[:-1].decode()
-    m_key = "kt76y9C46D4FL6T4F1fLF4f78fT"
+    m_key = settings.SECRET_KEY
     list_of_value_for_sign = map(
         str, [m_shop, m_orderid, m_amount, m_curr, m_desc, m_key])
     result_string = ":".join(list_of_value_for_sign)
@@ -93,7 +94,7 @@ def payment_processor(request):
         return
     
     if 'm_operation_id' in request.POST and 'm_sign' in request.POST:
-        m_key = 'kt76y9C46D4FL6T4F1fLF4f78fT'
+        m_key = settings.SECRET_KEY
         list_of_value_for_sign = map(str, [request.POST.get('m_operation_id'),
                                            request.POST.get('m_operation_ps'),
                                            request.POST.get('m_operation_date'),
