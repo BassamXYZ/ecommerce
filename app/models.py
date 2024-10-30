@@ -35,5 +35,6 @@ class Order(models.Model):
     client_postal_code = models.CharField(max_length=50)
     items = models.ManyToManyField(Item)
     total = models.FloatField()
+    payed = models.BooleanField(default=False)
     shipped = models.BooleanField(default=False)
     date = models.DateField(default=datetime.now)

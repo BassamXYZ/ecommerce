@@ -73,6 +73,8 @@ def cart(request):
 
 def checkout(request, order_id):
     order = Order.objects.get(id=order_id)
+    if order.payed == True:
+        return
     m_shop = settings.PAYEER_SHOP_ID
     m_orderid = order_id
     m_amount = order[0].total
@@ -109,8 +111,10 @@ def payment_processor(request):
         result_string = ":".join(list_of_value_for_sign)
         sign_hash = sha256(result_string)
         m_sign = sign_hash.hexdigest().upper()
-        if request.POST.get('m_sign') == sign_hash and request.POST.get('m_status') == 'success':
-            # Here you can mark the invoice as paid or transfer funds to your customer
+        if request.POST.get('m_sign') == m_sign and request.POST.get('m_status') == 'success':
+            order = Order.objects.get(id=request.POST.get('m_orderid'))
+            order.payed = True
+            order.save()
             return
 
     return
