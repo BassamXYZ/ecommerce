@@ -121,7 +121,7 @@ def payment_processor(request):
 
 
 @login_required
-def dashboard(request):
+def orders(request):
     if request.method == "POST":
         order_compleated = Order.objects.get(
             id=json.loads(request.body)['order_id'])
@@ -138,3 +138,9 @@ def dashboard(request):
     orders = Order.objects.filter(done=False).all()
     orders = orders[:20]
     return render(request, 'orders.html', {"orders": orders, "categories": categories})
+
+
+@login_required
+def analytics(request):
+    categories = Category.objects.all()
+    return render(request, 'analytics.html', {"categories": categories})
