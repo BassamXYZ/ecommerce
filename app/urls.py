@@ -3,17 +3,17 @@ from django.conf import settings
 from django.conf.urls.static import static
 
 
-from . import views
+from views import main, payment, dashboard
 
 urlpatterns = [
-    path("", views.index, name="index"),
-    path("dashboard/", views.orders, name="dashboard"),
-    path("cart/", views.cart, name="cart"),
-    path("checkout/", views.checkout, name="checkout"),
-    path("analytics/", views.analytics, name="analytics"),
-    path("search/", views.search, name="search"),
-    path("category/<str:category>", views.category, name="category"),
-    path("product/<str:category>/<str:product>", views.product, name="product"),
+    path("", main.index, name="index"),
+    path("search/", main.search, name="search"),
+    path("category/<str:category>", main.category, name="category"),
+    path("product/<str:category>/<str:product>", main.product, name="product"),
+    path("cart/", payment.cart, name="cart"),
+    path("checkout/", payment.checkout, name="checkout"),
+    path("orders/", dashboard.orders, name="dashboard"),
+    path("analytics/", dashboard.analytics, name="analytics"),
 ]
 
 if settings.DEBUG:
