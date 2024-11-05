@@ -12,9 +12,9 @@ def orders(request):
     if request.method == "POST":
         order_compleated = Order.objects.get(
             id=json.loads(request.body)['order_id'])
-        order_compleated.done = True
+        order_compleated.shipped = True
         order_compleated.save()
-        orders = Order.objects.filter(done=False).all()
+        orders = Order.objects.filter(shipped=False).all()
         if len(orders) > 19:
             order = orders[19]
             order = model_to_dict(order)
@@ -22,7 +22,7 @@ def orders(request):
             order = None
         return JsonResponse(order, safe=False)
     categories = Category.objects.all()
-    orders = Order.objects.filter(done=False).all()
+    orders = Order.objects.filter(shipped=False, payed=True).all()
     orders = orders[:20]
     return render(request, 'orders.html', {"orders": orders, "categories": categories})
 

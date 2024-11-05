@@ -8,26 +8,26 @@
   <div id="{{ order.id }}" class="card m-3">
     <div class="card-header">
       <div>
-        Email: {{ order.order.email }}
+        Email: {{ order.client_email }}
       </div>
       <div>
-        Address: {{ order.order.address }}
+        Date: {{ order.date }}
       </div>
       <div>
-        Total: {{ order.order.total }}
+        Address: {{ order.client_country }}, {{ order.client_city }}, {{ order.client_street }}, {{ order.client_postal_code }}
+      </div>
+      <div>
+        Total: {{ order.total }}
       </div>
     </div>
     <ul class="list-group list-group-flush">
-      {% for item in order.order.items %}
+      {% for item in order.items %}
       <li class="list-group-item">
         <div>
-          Product Name: {{ item.name }}
+          Product Name: {{ item.product.name }}
         </div>
         <div>
-          Quantity: {{ item.qty }}
-        </div>
-        <div>
-          Price: {{ item.price }}
+          Quantity: {{ item.quantity }}
         </div>
       </li>
       {% endfor %}
@@ -56,7 +56,7 @@
   const csrftoken = getCookie('csrftoken');
 
   function done(orderId) {
-    var url = "{% url 'dashboard' %}";
+    var url = "{% url 'orders' %}";
     fetch(url, {
       method: "POST",
       headers: {
