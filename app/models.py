@@ -14,7 +14,7 @@ class Product(models.Model):
     description = models.TextField()
     price = models.FloatField()
     image = models.ImageField(default=0)
-    catigory = models.ForeignKey(Category, on_delete=models.SET_NULL)
+    catigory = models.ForeignKey(Category, on_delete=models.DO_NOTHING)
     quantity = models.IntegerField(default=0)
 
     def __str__(self):
@@ -22,7 +22,7 @@ class Product(models.Model):
 
 
 class Item(models.Model):
-    product = models.ForeignKey(Product)
+    product = models.ForeignKey(Product, on_delete=models.PROTECT)
     quantity = models.IntegerField()
 
 
