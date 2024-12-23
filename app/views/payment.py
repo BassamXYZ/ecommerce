@@ -34,8 +34,7 @@ def cart(request):
     return render(request, 'cart.html', {"categories": categories})
 
 
-def checkout(request, order_id):
-    # Prosses for compleeted Payeer payments
+def checkout(request):
     if request.method == "POST":
         ip = get_client_ip(request)
         if ip not in ['185.71.65.92', '185.71.65.189', '149.202.17.210']:
@@ -66,6 +65,7 @@ def checkout(request, order_id):
         return
     
     # prosses for GET requests
+    order_id = request.GET.get('id')
     order = Order.objects.get(id=order_id)
     if order.payed == True:
         return

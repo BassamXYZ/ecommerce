@@ -1,10 +1,28 @@
-<form method="post" action="https://payeer.com/merchant/">
-  <input type="hidden" name="m_shop" value="12345">
-  <input type="hidden" name="m_orderid" value="{{ m_orderid }}">
-  <input type="hidden" name="m_amount" value="{{ m_amount }}">
-  <input type="hidden" name="m_curr" value="USD">
-  <input type="hidden" name="m_desc" value="{{ m_desc }}">
-  <input type="hidden" name="m_sign" value="{{ m_sign }}">
-  <input type="hidden" name="success_url" value="http://mywebsite.com" >
-  <input type="submit" name="m_process" value="send" />
-</form>
+<!DOCTYPE html>
+{% load static %}
+<html lang="en">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="{% static 'bootstrap.min.css' %}">
+    <title>Checkout | Ecommerce</title>
+  </head>
+  <body class="bg-light">
+    <main class="container-xl p-5">
+      <div class="text-center m-5">
+        <h1 class="">{{ m_amount }}$</h1>
+        <form method="post" action="https://payeer.com/merchant/">
+          <input type="hidden" name="m_shop" value="12345">
+          <input type="hidden" name="m_orderid" value="{{ m_orderid }}">
+          <input type="hidden" name="m_amount" value="{{ m_amount }}">
+          <input type="hidden" name="m_curr" value="USD">
+          <input type="hidden" name="m_desc" value="{{ m_desc }}">
+          <input type="hidden" name="m_sign" value="{{ m_sign }}">
+          <input type="hidden" name="success_url" value="http://mywebsite.com">
+          <input class="btn btn-info" type="submit" name="m_process" value="Complete Checkout" />
+        </form>
+      </div>
+    </main>
+    <script src="{% static 'bootstrap.bundle.min.js' %}"></script>
+  </body>
+</html>
