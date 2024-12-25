@@ -26,7 +26,7 @@ SECRET_KEY = 'django-insecure-+v^@aw2+7@1)#(^$nqal)bbdl)nvar3$gm7$0vk589uq%=%3la
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = False
 
-ALLOWED_HOSTS = []
+ALLOWED_HOSTS = [ecommerce-idfw.onrender.com]
 
 
 # Application definition
@@ -80,7 +80,7 @@ ASGI_APPLICATION = 'ecommerce.asgi.application'
 DATABASES = {
     'default': dj_database_url.config(
         # Replace this value with your local database's connection string.
-        default='postgresql://postgres:postgres@localhost:5432/ecommerce',
+        default='postgresql://postgres:postgres@localhost:5432/ecommercedb',
         conn_max_age=600
     )
 }
