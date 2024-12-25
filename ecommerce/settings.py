@@ -28,6 +28,8 @@ DEBUG = False
 
 ALLOWED_HOSTS = ['ecommerce-idfw.onrender.com']
 
+ADMINS = [("Bassam", "bassam.essam.ahmad@gmail.com")]
+
 
 # Application definition
 
