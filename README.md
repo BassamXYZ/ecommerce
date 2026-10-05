@@ -18,26 +18,26 @@ Clone the project
 Go to the project directory
 
 ```bash
-  cd my-project
+  cd ecommerce
 ```
 
 Install dependencies
 
 ```bash
-  pip install requirements.txt
+  pip install -r requirements.txt
 ```
 
 Start the server
 
 ```bash
-  python ecommerce/manage.py runserver
+  python manage.py runserver
 ```
 
 ## 🚀 About Me
 
 I'm a full stack developer...
 
-[My portfolio](https://bassamahmad.netlify.app)
+[My portfolio](https://bassamahmad.com)
 
 ## License
 
