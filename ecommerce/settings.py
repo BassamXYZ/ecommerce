@@ -7,7 +7,9 @@ configuration. A local .env file is loaded when present.
 
 import os
 from pathlib import Path
+from urllib.parse import urlparse
 
+from botocore.config import Config
 from dotenv import load_dotenv
 import dj_database_url
 
@@ -69,6 +71,7 @@ INSTALLED_APPS = [
     "django.contrib.sessions",
     "django.contrib.messages",
     "django.contrib.staticfiles",
+    "storages",
     "app",
 ]
 
@@ -164,6 +167,8 @@ STATIC_URL = "/static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"
 
 # Django 5.1 uses STORAGES instead of the older STATICFILES_STORAGE setting.
+# Static files stay on WhiteNoise; the "default" (media) storage is switched
+# to Neon Object Storage below when it is configured.
 STORAGES = {
     "default": {
         "BACKEND": "django.core.files.storage.FileSystemStorage",
@@ -175,11 +180,71 @@ STORAGES = {
 
 
 # ---------------------------------------------------------------------------
-# Media files
+# Media files (product images) -> Neon Object Storage
 # ---------------------------------------------------------------------------
 
-MEDIA_URL = "/media/"
-MEDIA_ROOT = BASE_DIR / "media"
+# Neon Object Storage is S3-compatible, so we use django-storages' S3 backend.
+# Product images live in a *public_read* bucket: anyone can read them, only
+# holders of the credential below can write.
+#
+# If these variables are not all set (e.g. quick local development), media
+# files fall back to the local ./media folder.
+
+AWS_STORAGE_BUCKET_NAME = os.getenv("AWS_STORAGE_BUCKET_NAME", "")
+AWS_ENDPOINT_URL_S3 = os.getenv("AWS_ENDPOINT_URL_S3", "")
+AWS_ACCESS_KEY_ID = os.getenv("AWS_ACCESS_KEY_ID", "")
+AWS_SECRET_ACCESS_KEY = os.getenv("AWS_SECRET_ACCESS_KEY", "")
+AWS_REGION = os.getenv("AWS_REGION", "")
+
+USE_NEON_STORAGE = all(
+    [
+        AWS_STORAGE_BUCKET_NAME,
+        AWS_ENDPOINT_URL_S3,
+        AWS_ACCESS_KEY_ID,
+        AWS_SECRET_ACCESS_KEY,
+        AWS_REGION,
+    ]
+)
+
+if USE_NEON_STORAGE:
+    # Objects in a public_read bucket are served at:
+    #   https://<branch-endpoint-host>/<bucket>/<object-key>
+    _neon_host = urlparse(AWS_ENDPOINT_URL_S3).netloc
+
+    STORAGES["default"] = {
+        "BACKEND": "storages.backends.s3.S3Storage",
+        "OPTIONS": {
+            "bucket_name": AWS_STORAGE_BUCKET_NAME,
+            "endpoint_url": AWS_ENDPOINT_URL_S3,
+            "region_name": AWS_REGION,
+            "access_key": AWS_ACCESS_KEY_ID,
+            "secret_key": AWS_SECRET_ACCESS_KEY,
+            # Neon supports path-style addressing only.
+            "addressing_style": "path",
+            "signature_version": "s3v4",
+            # Neon does not implement PutObjectAcl / PutBucketAcl: access is
+            # controlled by the bucket's access level (public_read), so never
+            # send an ACL with uploads.
+            "default_acl": None,
+            # Public bucket -> plain URLs, no signed query strings.
+            "querystring_auth": False,
+            "custom_domain": f"{_neon_host}/{AWS_STORAGE_BUCKET_NAME}",
+            # Never overwrite: a duplicate file name gets a random suffix, so
+            # an object's URL never changes content and is safe to cache.
+            "file_overwrite": False,
+            "object_parameters": {"CacheControl": "public, max-age=31536000"},
+            # Only compute checksums when the S3 API requires them. Newer
+            # boto3 versions add them by default, which some S3-compatible
+            # services reject.
+            "client_config": Config(
+                request_checksum_calculation="when_required",
+                response_checksum_validation="when_required",
+            ),
+        },
+    }
+else:
+    MEDIA_URL = "/media/"
+    MEDIA_ROOT = BASE_DIR / "media"
 
 
 # ---------------------------------------------------------------------------

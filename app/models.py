@@ -12,9 +12,9 @@ class Category(models.Model):
 class Product(models.Model):
     name = models.CharField(max_length=200)
     description = models.TextField()
-    price = models.FloatField()
-    image = models.ImageField(default=0)
-    catigory = models.ForeignKey(Category, on_delete=models.DO_NOTHING)
+    price = models.DecimalField()
+    image = models.ImageField(upload_to="products/")
+    category = models.ForeignKey(Category, on_delete=models.PROTECT)
     quantity = models.IntegerField(default=0)
 
     def __str__(self):
