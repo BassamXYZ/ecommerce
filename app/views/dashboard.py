@@ -10,8 +10,7 @@ from ..models import Category, Order
 @login_required
 def orders(request):
     if request.method == "POST":
-        order_compleated = Order.objects.get(
-            id=json.loads(request.body)['order_id'])
+        order_compleated = Order.objects.get(id=json.loads(request.body)["order_id"])
         order_compleated.shipped = True
         order_compleated.save()
         orders = Order.objects.filter(shipped=False).all()
@@ -24,10 +23,10 @@ def orders(request):
     categories = Category.objects.all()
     orders = Order.objects.filter(shipped=False, payed=True).all()
     orders = orders[:20]
-    return render(request, 'orders.html', {"orders": orders, "categories": categories})
+    return render(request, "orders.html", {"orders": orders, "categories": categories})
 
 
 @login_required
 def analytics(request):
     categories = Category.objects.all()
-    return render(request, 'analytics.html', {"categories": categories})
+    return render(request, "analytics.html", {"categories": categories})
