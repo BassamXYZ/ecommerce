@@ -12,7 +12,7 @@ class Category(models.Model):
 class Product(models.Model):
     name = models.CharField(max_length=200)
     description = models.TextField()
-    price = models.DecimalField()
+    price = models.DecimalField(max_digits=10, decimal_places=2)
     image = models.ImageField(upload_to="products/")
     category = models.ForeignKey(Category, on_delete=models.PROTECT)
     quantity = models.IntegerField(default=0)
@@ -34,7 +34,7 @@ class Order(models.Model):
     client_street = models.CharField(max_length=50)
     client_postal_code = models.CharField(max_length=50)
     items = models.ManyToManyField(Item)
-    total = models.FloatField()
+    total = models.DecimalField(max_digits=10, decimal_places=2)
     payed = models.BooleanField(default=False)
     shipped = models.BooleanField(default=False)
     date = models.DateField(default=datetime.now)
