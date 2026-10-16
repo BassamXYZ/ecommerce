@@ -3,7 +3,7 @@ import binascii
 from django.shortcuts import render, redirect
 from django.conf import settings
 
-from ..models import Category, Product, Order, Item
+from ..models import Category, Product, Order, OrderItem as Item
 from ..functions import get_client_ip, hash_payeer_sign
 
 

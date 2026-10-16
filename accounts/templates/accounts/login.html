@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Sign in</title>
+  </head>
+  <body>
+    <main>
+      <h1>Sign in</h1>
+
+      {% if messages %}
+      <ul>
+        {% for message in messages %}
+        <li>{{ message }}</li>
+        {% endfor %}
+      </ul>
+      {% endif %}
+
+      <form method="post">
+        {% csrf_token %}
+        <input type="hidden" name="next" value="{{ next }}" />
+
+        {% if form.non_field_errors %}
+        <div role="alert">{{ form.non_field_errors }}</div>
+        {% endif %} {% for field in form %}
+        <div>
+          {{ field.label_tag }} {{ field }} {% for error in field.errors %}
+          <p role="alert">{{ error }}</p>
+          {% endfor %}
+        </div>
+        {% endfor %}
+
+        <button type="submit">Sign in</button>
+      </form>
+
+      <p>
+        Don't have an account?
+        <a href="{% url 'accounts:register' %}">Create an account</a>
+      </p>
+    </main>
+  </body>
+</html>
