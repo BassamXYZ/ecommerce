@@ -1,0 +1,32 @@
+{% include "includes/product_grid.html" %}
+
+{% if page_obj.paginator.num_pages > 1 %}
+  <nav class="catalog-pagination mt-4" aria-label="Category pages">
+    <span class="small text-secondary">Page {{ page_obj.number }} of {{ page_obj.paginator.num_pages }}</span>
+    <div class="d-flex gap-2">
+      {% if page_obj.has_previous %}
+        <a class="btn btn-outline-secondary"
+           href="{% url 'category' category.name %}?sort={{ sort }}{% if in_stock %}&amp;in_stock=1{% endif %}&amp;page={{ page_obj.previous_page_number }}"
+           hx-get="{% url 'category' category.name %}?sort={{ sort }}{% if in_stock %}&amp;in_stock=1{% endif %}&amp;page={{ page_obj.previous_page_number }}"
+           hx-target="#category-results"
+           hx-swap="innerHTML"
+           hx-push-url="true"
+           hx-indicator="#category-loading">Previous</a>
+      {% else %}
+        <span class="btn btn-outline-secondary disabled" aria-disabled="true">Previous</span>
+      {% endif %}
+      {% if page_obj.has_next %}
+        <a class="btn btn-outline-secondary"
+           href="{% url 'category' category.name %}?sort={{ sort }}{% if in_stock %}&amp;in_stock=1{% endif %}&amp;page={{ page_obj.next_page_number }}"
+           hx-get="{% url 'category' category.name %}?sort={{ sort }}{% if in_stock %}&amp;in_stock=1{% endif %}&amp;page={{ page_obj.next_page_number }}"
+           hx-target="#category-results"
+           hx-swap="innerHTML"
+           hx-push-url="true"
+           hx-indicator="#category-loading">Next</a>
+      {% else %}
+        <span class="btn btn-outline-secondary disabled" aria-disabled="true">Next</span>
+      {% endif %}
+    </div>
+  </nav>
+{% endif %}
+<span id="category-loading" class="htmx-indicator small text-secondary mt-2" role="status">Loading products…</span>

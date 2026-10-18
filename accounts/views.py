@@ -48,7 +48,7 @@ def register(request):
                     "Your account has been created. You can now log in.",
                 )
 
-                return redirect("login")
+                return redirect("accounts:login")
 
     else:
         form = RegistrationForm()

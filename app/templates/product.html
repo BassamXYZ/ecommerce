@@ -1,78 +1,78 @@
-{% extends 'base.html' %}
+{% extends "base.html" %}
+{% load static %}
 
-{% block title %}{{ product.name }}{% endblock %}
+{% block title %}{{ product.name }} | Store{% endblock %}
+{% block meta_description %}{{ product.description|truncatechars:160 }}{% endblock %}
 
 {% block content %}
-<h2 class="text-center" id="name">{{ product.name }}</h2>
-<div class="card mt-2 p-2" >
-  <img src="{{ product.image.url }}" class="card-img-top card-img-bottom" alt="{{ product.description }}" id="img">
-</div>
-<div class="container text-center mt-2 p-2">
-  <div class="row">
-    <div class="col">
-      <p class="text-center" id="price">{{ product.price }}</p>
-      <a href="/category/{{ product.catigory.name }}" class="btn btn-outline-info">{{ product.catigory.name }}</a>
-      <div>
-        <button class="btn btn-outline-info" onclick="decQty()">-</button>
-        <p class="text-center" id="qty">1</p>
-        <button class="btn btn-outline-info" onclick="encQty()">+</button>
-      </div>
-      <button class="btn btn-outline-info" onclick="addToCart('{{ product.id }}')">Add to cart</button>
-    </div>
-    <div class="col">
-      <p class="card-text">{{ product.description }}</p>
-    </div>
+<nav class="product-breadcrumb mb-4" aria-label="Breadcrumb">
+  <a href="{% url 'index' %}">Shop</a>
+  <span aria-hidden="true">/</span>
+  <a href="{% url 'category' product.category.name %}">{{ product.category.name }}</a>
+  <span aria-hidden="true">/</span>
+  <span aria-current="page">{{ product.name }}</span>
+</nav>
+
+<section class="product-detail" id="product-detail"
+         data-product-id="{{ product.pk }}"
+         data-product-name="{{ product.name }}"
+         data-product-price="{{ product.price }}"
+         data-product-image="{% if product.image %}{{ product.image.url }}{% endif %}"
+         data-product-available="{% if product.is_available %}true{% else %}false{% endif %}"
+         data-product-stock="{{ product.quantity }}">
+  <div class="product-detail-media">
+    {% if product.image %}
+      <img class="product-detail-image" src="{{ product.image.url }}" alt="{{ product.name }}">
+    {% else %}
+      <div class="product-detail-image product-detail-image-placeholder" role="img" aria-label="No product image available">No image available</div>
+    {% endif %}
   </div>
-</div>
-<script>
-  var qty = document.getElementById("qty");
-  var qtyValue = 1;
 
-  function decQty() {
-    if (qtyValue > 1) {
-      qtyValue--;
-    }
-    qty.innerHTML = qtyValue;
-  }
+  <div class="product-detail-copy">
+    <p class="page-eyebrow">{{ product.category.name }}</p>
+    <h1 class="page-title">{{ product.name }}</h1>
+    <p class="product-detail-price">{{ product.price|floatformat:2 }} $</p>
 
-  function encQty() {
-    qtyValue++;
-    qty.innerHTML = qtyValue;
-  }
+    {% if product.description %}
+      <div class="product-description">{{ product.description|linebreaks }}</div>
+    {% else %}
+      <p class="text-secondary">No product description is available yet.</p>
+    {% endif %}
 
-  var cart = [];
-  if (localStorage.cart) {
-    cart = JSON.parse(localStorage.cart);
-  }
+    <div class="product-availability mb-4">
+      {% if product.is_available %}
+        <span class="availability-dot" aria-hidden="true"></span>
+        <span>In stock</span>
+      {% else %}
+        <span class="availability-dot availability-dot-out" aria-hidden="true"></span>
+        <span>Currently unavailable</span>
+      {% endif %}
+    </div>
 
-  function saveCart() {
-    if (window.localStorage) {
-      localStorage.cart = JSON.stringify(cart);
-    }
-  }
-  
-  function addToCart(id) {
-    var productIndex = -1;
-    var price = Number(document.getElementById("price").textContent);
-    var name = document.getElementById("name").textContent;
-    var img = document.getElementById("img").getAttribute("src");
+    {% if product.is_available %}
+      <div class="product-purchase-row">
+        <div>
+          <label class="form-label fw-semibold" for="product-quantity">Quantity</label>
+          <div class="quantity-control">
+            <button class="btn btn-outline-secondary" type="button" data-quantity-step="-1" aria-label="Decrease quantity">−</button>
+            <input class="form-control text-center" id="product-quantity" type="number" min="1"
+                   max="{{ product.quantity }}" value="1" inputmode="numeric" aria-describedby="quantity-help">
+            <button class="btn btn-outline-secondary" type="button" data-quantity-step="1" aria-label="Increase quantity">+</button>
+          </div>
+          <small id="quantity-help" class="form-text">Available: {{ product.quantity }}</small>
+        </div>
+        <button class="btn btn-brand btn-lg product-add-button" id="add-to-cart" type="button">Add to cart</button>
+      </div>
+      <p id="cart-feedback" class="small mt-3" role="status" aria-live="polite"></p>
+    {% else %}
+      <button class="btn btn-outline-secondary btn-lg" type="button" disabled>Out of stock</button>
+    {% endif %}
 
-    var item = { Id: id, Product: name, Price: price, Qty: qtyValue, Img: img };
+    <a class="back-to-category mt-4" href="{% url 'category' product.category.name %}">← More from {{ product.category.name }}</a>
+  </div>
+</section>
+{% endblock %}
 
-    for (var i in cart) {
-      if (cart[i].Product == name) {
-        productIndex = i;
-        break;
-      }
-    }
-
-    if (productIndex != -1) {
-      cart[i] = item;
-    } else {
-      cart.push(item);
-    }
-
-    saveCart();
-  }
-</script>
+{% block extra_js %}
+  <script src="{% static 'js/product-detail.js' %}" defer></script>
 {% endblock %}

@@ -1,0 +1,38 @@
+{% if products %}
+  <div class="row row-cols-1 row-cols-sm-2 row-cols-lg-3 row-cols-xl-4 g-3 g-lg-4 product-grid">
+    {% for product in products %}
+      <div class="col">
+        <article class="product-card">
+          <a class="product-card-media" href="{% url 'product_detail' product.pk %}" aria-label="View {{ product.name }}">
+            {% if product.image %}
+              <img class="product-card-image" src="{{ product.image.url }}" alt="{{ product.name }}" loading="lazy">
+            {% else %}
+              <span class="product-card-image product-image-placeholder" aria-hidden="true">No image</span>
+            {% endif %}
+          </a>
+          <div class="product-card-body">
+            <h3 class="product-card-title">
+              <a href="{% url 'product_detail' product.pk %}">{{ product.name }}</a>
+            </h3>
+            {% if product.is_available %}
+              <p class="product-card-price">{{ product.price|floatformat:2 }} $</p>
+            {% else %}
+              <p class="product-card-price">{{ product.price|floatformat:2 }} $ <span class="stock-note">Out of stock</span></p>
+            {% endif %}
+            <a class="btn btn-brand w-100 mt-3" href="{% url 'product_detail' product.pk %}">View product</a>
+          </div>
+        </article>
+      </div>
+    {% endfor %}
+  </div>
+{% else %}
+  <div class="surface-card empty-state" role="status">
+    {% if q %}
+      <h2 class="section-heading">No matching products</h2>
+      <p class="text-secondary mb-0">We couldn't find any products matching “{{ q }}”. Try another search term.</p>
+    {% else %}
+      <h2 class="section-heading">No products to show</h2>
+      <p class="text-secondary mb-0">{{ empty_message|default:"Enter a search term to find products, or check back later." }}</p>
+    {% endif %}
+  </div>
+{% endif %}

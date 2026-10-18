@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+
+{% block title %}{{ category.name }} | Store{% endblock %}
+{% block meta_description %}Browse products in {{ category.name }}.{% endblock %}
+
+{% block content %}
+<header class="page-heading">
+  <p class="page-eyebrow">Shop by category</p>
+  <h1 class="page-title">{{ category.name }}</h1>
+  <p class="page-description">Explore the products in this collection.</p>
+</header>
+
+<form class="catalog-filters surface-card mb-4"
+      action="{% url 'category' category.name %}"
+      method="get"
+      hx-get="{% url 'category' category.name %}"
+      hx-target="#category-results"
+      hx-swap="innerHTML"
+      hx-trigger="change, submit"
+      hx-push-url="true"
+      hx-indicator="#category-loading">
+  <div class="row g-3 align-items-end">
+    <div class="col-12 col-sm-6 col-lg-4">
+      <label class="form-label fw-semibold" for="category-sort">Sort by</label>
+      <select class="form-select" name="sort" id="category-sort">
+        <option value="name" {% if sort == "name" %}selected{% endif %}>Name (A–Z)</option>
+        <option value="price_asc" {% if sort == "price_asc" %}selected{% endif %}>Price (low to high)</option>
+        <option value="price_desc" {% if sort == "price_desc" %}selected{% endif %}>Price (high to low)</option>
+      </select>
+    </div>
+    <div class="col-12 col-sm-6 col-lg-4">
+      <div class="form-check py-2">
+        <input class="form-check-input" type="checkbox" name="in_stock" value="1"
+               id="category-in-stock" {% if in_stock %}checked{% endif %}>
+        <label class="form-check-label" for="category-in-stock">In-stock items only</label>
+      </div>
+    </div>
+    <div class="col-12 col-lg-4 d-flex justify-content-lg-end">
+      <button class="btn btn-brand" type="submit">Apply filters</button>
+    </div>
+  </div>
+</form>
+
+<div id="category-results" aria-live="polite" aria-busy="false">
+  {% include "includes/category_results.html" %}
+</div>
+{% endblock %}

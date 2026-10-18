@@ -1,0 +1,15 @@
+<footer class="site-footer">
+  <div class="container site-container">
+    <div class="site-footer-main">
+      <a class="site-footer-brand" href="{% url 'index' %}">Store</a>
+      <p class="site-footer-note">Thoughtfully chosen products. A straightforward shopping experience.</p>
+    </div>
+    <div class="site-footer-links">
+      <a href="{% url 'index' %}">Shop</a>
+      <a href="{% url 'cart' %}">Cart</a>
+      {% url 'accounts:login' as footer_login_url %}
+      {% if footer_login_url %}<a href="{{ footer_login_url }}">Sign in</a>{% endif %}
+    </div>
+    <p class="site-footer-copyright">&copy; {% now "Y" %} Store. All rights reserved.</p>
+  </div>
+</footer>

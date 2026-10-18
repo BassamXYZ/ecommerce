@@ -1,28 +1,42 @@
-{% extends 'base.html' %}
+{% extends "base.html" %}
 
-{% block title %}Welcome{% endblock %}
+{% block title %}Shop | Store{% endblock %}
+{% block meta_description %}Browse the catalogue, discover categories and find your next favourite product.{% endblock %}
 
 {% block content %}
-{% for category in categories %}
-<div class="card mb-2 bg-light">
-  <div class="card-header bg-info">
-    <a href="category/{{ category.name }}" class="text-dark">{{ category.name }}</a>
+<section class="store-hero mb-5">
+  <div class="store-hero-copy">
+    <p class="page-eyebrow">The collection</p>
+    <h1 class="store-hero-title">Find something<br class="d-none d-md-block"> worth keeping.</h1>
+    <p class="store-hero-description">Explore the collection and discover products selected for everyday life.</p>
+    <a class="btn btn-brand btn-lg" href="{% url 'search' %}">Explore products</a>
   </div>
-  <div class="card-body">
-    <div class="row">
-      {% for product in category.product_set.all|slice:"0:10" %}
-      <div class="card mx-auto mt-2 p-2" style="width: 14rem;">
-        <img src="{{ product.image.url }}" class="card-img-top" alt="{{ product.description }}" >
-        <div class="card-body">
-          <h5 class="card-title">{{ product.name }}</h5>
-          <p class="card-text">{{ product.description }}</p>{{ product.sals }}
-          <p class="card-text text-success-emphasis border border-success-subtle rounded text-center">{{ product.price }} $</p>
-          <a href="product/{{ category.name }}/{{ product.name }}" class="btn btn-outline-info">shop it</a>
+  <div class="store-hero-art" aria-hidden="true">
+    <span class="hero-orbit hero-orbit-one"></span>
+    <span class="hero-orbit hero-orbit-two"></span>
+    <span class="hero-art-word">Discover</span>
+  </div>
+</section>
+
+{% if categories %}
+  {% for category in categories %}
+    {% if category.featured_products %}
+      <section class="catalog-section mb-5" aria-labelledby="category-heading-{{ forloop.counter }}">
+        <div class="d-flex flex-wrap align-items-end justify-content-between gap-3 mb-3">
+          <div>
+            <p class="page-eyebrow mb-1">Explore by category</p>
+            <h2 class="section-heading mb-0" id="category-heading-{{ forloop.counter }}">{{ category.name }}</h2>
+          </div>
+          <a class="section-link" href="{% url 'category' category.name %}">View category <span aria-hidden="true">→</span></a>
         </div>
-      </div>
-      {% endfor %}
-    </div>
-  </div>
-</div>
+        {% include "includes/product_grid.html" with products=category.featured_products only %}
+      </section>
+    {% endif %}
   {% endfor %}
+{% else %}
+  <section class="surface-card text-center py-5">
+    <h2 class="section-heading">The collection is being prepared</h2>
+    <p class="text-secondary mb-0">Please check back soon to see available products.</p>
+  </section>
+{% endif %}
 {% endblock %}

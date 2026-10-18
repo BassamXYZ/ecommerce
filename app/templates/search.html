@@ -1,19 +1,35 @@
-{% extends 'base.html' %}
+{% extends "base.html" %}
 
-{% block title %}Search{% endblock %}
+{% block title %}{% if q %}Search: {{ q }}{% else %}Search products{% endif %} | Store{% endblock %}
+{% block meta_description %}Search the store catalogue by product name or description.{% endblock %}
 
 {% block content %}
-<div class="row">
-  {% for product in products %}
-  <div class="card mx-auto mt-2 p-2" style="width: 18rem;">
-    <img src="{{ product.image.url }}" class="card-img-top" alt="{{ product.description }}">
-    <div class="card-body">
-      <h5 class="card-title">{{ product.name }}</h5>
-      <p class="card-text">{{ product.description }}</p>
-      <p class="card-text text-success-emphasis border border-success-subtle rounded w-25 text-center">{{ product.price }} $</p>
-      <a href="/product/{{ category.name }}/{{ product.name }}" class="btn btn-outline-info">shop it</a>
-    </div>
+<header class="page-heading">
+  <p class="page-eyebrow">Find your next favourite</p>
+  <h1 class="page-title">Search products</h1>
+  <p class="page-description">Search by product name or description.</p>
+</header>
+
+<form class="catalog-search surface-card mb-4"
+      action="{% url 'search' %}"
+      method="get"
+      role="search"
+      hx-get="{% url 'search' %}"
+      hx-target="#search-results"
+      hx-swap="innerHTML"
+      hx-trigger="submit"
+      hx-push-url="true"
+      hx-indicator="#search-loading">
+  <label class="form-label fw-semibold" for="catalog-query">What are you looking for?</label>
+  <div class="d-flex flex-column flex-sm-row gap-2">
+    <input class="form-control form-control-lg" id="catalog-query" type="search"
+           name="q" value="{{ q }}" placeholder="Search products" autocomplete="off">
+    <button class="btn btn-brand px-4" type="submit">Search</button>
   </div>
-  {% endfor %}
+  <span id="search-loading" class="htmx-indicator small text-secondary mt-2" role="status">Updating results…</span>
+</form>
+
+<div id="search-results" aria-live="polite" aria-busy="false">
+  {% include "includes/product_grid.html" %}
 </div>
 {% endblock %}
