@@ -12,7 +12,11 @@ urlpatterns = [
     path("product/<int:product_id>/", main.product_detail, name="product_detail"),
     path("product/<str:category>/<str:product>", main.product, name="product"),
     path("cart/", payment.cart, name="cart"),
+    path("cart/add/<int:product_id>/", payment.add_to_cart, name="add_to_cart"),
+    path("cart/update/<int:product_id>/", payment.update_cart_item, name="update_cart_item"),
+    path("cart/remove/<int:product_id>/", payment.remove_cart_item, name="remove_cart_item"),
     path("checkout/", payment.checkout, name="checkout"),
+    path("orders/<int:order_id>/confirmation/", payment.order_confirmation, name="order_confirmation"),
     path("orders/", dashboard.orders, name="orders"),
     path("analytics/", dashboard.analytics, name="analytics"),
 ]
@@ -20,3 +24,4 @@ urlpatterns = [
 if settings.DEBUG:
     urlpatterns += static(settings.MEDIA_URL,
                           document_root=settings.MEDIA_ROOT)
+

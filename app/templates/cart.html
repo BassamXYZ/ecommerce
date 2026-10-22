@@ -1,153 +1,58 @@
 {% extends 'base.html' %}
 
-{% block title %}Cart{% endblock %}
+{% block title %}Your cart{% endblock %}
 
 {% block content %}
-<table class="table table-info table-borderless text-center align-middle">
-  <thead>
-    <tr>
-      <td>Name</td>
-      <td>Img</td>
-      <td>Price</td>
-      <td>Qty</td>
-      <td>Total Price</td>
-      <td>Delete</td>
-      <td> + </td>
-      <td> - </td>
-    </tr>
-  </thead>
-  <tbody id="cartBody"></tbody>
-</table>
-<div class="text-center d-flex flex-column align-items-center mb-3">
-  <div>
-    <div class="row m-1">
-      <input id="firstName" type="text" class="col-auto" placeholder="First Name" required>
-      <input id="lastName" type="text" class="col-auto" placeholder="Last Name" required>
-    </div>
-    <div class="row m-1">
-      <input id="email" type="text" placeholder="Email" required>
-    </div>
-    <div class="row m-1">
-      <input id="street" type="text" class="col-auto" placeholder="Street Address" required>
-      <input id="city" type="text" class="col-auto" placeholder="City" required>
-    </div>
-    <div class="row m-1">
-      <input id="postalCode" type="text" class="col-auto" placeholder="Postal Code" required>
-      <input id="country" type="text" class="col-auto" placeholder="Country" required>
-    </div>
+<section class="py-4 py-lg-5">
+  <div class="d-flex flex-wrap justify-content-between align-items-end gap-3 mb-4">
+    <div><p class="text-uppercase small fw-semibold text-secondary mb-1">Your selection</p><h1 class="h2 mb-0">Shopping cart</h1></div>
+    <a class="btn btn-outline-secondary" href="{% url 'index' %}">Continue shopping</a>
   </div>
-  <button class="btn btn-info" onclick="orderCompleted">Complete Order</button>
-</div>
-<script>
-  var total;
-  var cart = [];
-  if (localStorage.cart) {
-    cart = JSON.parse(localStorage.cart);
-  }
-  showCart()
 
-  function saveCart() {
-    if (window.localStorage) {
-      localStorage.cart = JSON.stringify(cart);
-    }
-  }
-
-  function deleteItem(index) {
-    cart.splice(index, 1);
-    saveCart();
-    showCart();
-  }
-
-  function showCart() {
-    var html = ""
-    for (var i in cart) {
-      var item = cart[i];
-      var row = "<tr><td>" + item.Product + "</td><td><img width='150px' src=" +
-        item.Img + "></td><td>" +
-        item.Price + "</td><td>" + item.Qty + "</td><td>"
-        + item.Qty * item.Price + "</td><td>"
-        + "<button type='button' class='btn btn-danger' onclick='deleteItem(" + i + ")'>Delete</button></td><td>"
-        + "<button type='button' class='btn btn-info' onclick='incQty(" + i + ")'> + </button></td><td>"
-        + "<button type='button' class='btn btn-info' onclick='decQty(" + i + ")'> - </button></td></tr>";
-      html += row;
-    }
-
-    total = 0;
-    cart.forEach(element => {
-      total += element.Price * element.Qty
-    });
-
-    document.getElementById("cartBody").innerHTML = html;
-  }
-
-
-  function incQty(index) {
-    cart[index].Qty++;
-    saveCart();
-    showCart();
-  }
-
-  function decQty(index) {
-    if (cart[index].Qty == 1) {
-      deleteItem(index);
-      return;
-    }
-    cart[index].Qty--;
-    saveCart();
-    showCart();
-  }
-
-  /*get csrftoken cookie*/
-
-  function getCookie(name) {
-    let cookieValue = null;
-    if (document.cookie && document.cookie !== '') {
-      const cookies = document.cookie.split(';');
-      for (let i = 0; i < cookies.length; i++) {
-        const cookie = cookies[i].trim();
-        // Does this cookie string begin with the name we want?
-        if (cookie.substring(0, name.length + 1) === (name + '=')) {
-          cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
-          break;
-        }
-      }
-    }
-    return cookieValue;
-  }
-  const csrftoken = getCookie('csrftoken');
-
-  function orderCompleted(params) {
-    var firstName = document.getElementById("firstName").value;
-    var lastName = document.getElementById("lastName").value;
-    var fullName = firstName + " " + lastName;
-    var street = document.getElementById("street").value;
-    var city = document.getElementById("city").value;
-    var postalCode = document.getElementById("postalCode").value;
-    var country = document.getElementById("country").value;
-    var email = document.getElementById("email").value;
-
-    var url = "{% url 'cart' %}";
-    var items = cart.map((item) => item = { 'product_id': item.Id, 'quantity': item.Qty });
-
-    localStorage.removeItem("cart");
-
-    fetch(url, {
-      method: "POST",
-      redirect: "follow",
-      headers: {
-        'Content-type': "application/json",
-        'X-CSRFToken': csrftoken,
-      },
-      body: JSON.stringify({
-        'client_name': fullName,
-        'client_email': email,
-        'client_country': country,
-        'client_city': city,
-        'client_street': street,
-        'client_postal_code': postalCode,
-        'items': items,
-      })
-    })
-  }
-</script>
+  {% if cart_issues %}<div class="alert alert-warning" role="alert"><strong>Review your cart.</strong><ul class="mb-0">{% for issue in cart_issues %}<li>{{ issue }}</li>{% endfor %}</ul></div>{% endif %}
+  {% if cart_is_empty %}
+    <div class="border rounded-4 p-5 text-center bg-light-subtle">
+      <h2 class="h4">Your cart is empty</h2>
+      <p class="text-secondary">Browse the store and add something you need.</p>
+      <a class="btn btn-primary" href="{% url 'index' %}">Browse products</a>
+    </div>
+  {% else %}
+    <div class="row g-4 align-items-start">
+      <div class="col-lg-8">
+        <div class="border rounded-4 overflow-hidden">
+          {% for item in cart_items %}
+            <div class="d-flex flex-column flex-sm-row gap-3 p-3 p-md-4 {% if not forloop.last %}border-bottom{% endif %}">
+              <div class="cart-product-image bg-light rounded-3 d-flex align-items-center justify-content-center">
+                {% if item.product.image %}<img src="{{ item.product.image.url }}" alt="{{ item.product.name }}" class="img-fluid">{% else %}<span class="text-secondary small">No image</span>{% endif %}
+              </div>
+              <div class="flex-grow-1">
+                <a class="fw-semibold text-decoration-none" href="{% url 'product' category=item.product.category.name product=item.product.name %}">{{ item.product.name }}</a>
+                <div class="text-secondary small mt-1">€{{ item.product.price|floatformat:2 }} each</div>
+                {% if item.issues %}<div class="small text-danger mt-2">{{ item.issues|join:' ' }}</div>{% endif %}
+                <div class="d-flex flex-wrap align-items-center gap-2 mt-3">
+                  <form action="{% url 'update_cart_item' product_id=item.product.pk %}" method="post" class="d-flex align-items-center gap-2">
+                    {% csrf_token %}
+                    <label class="visually-hidden" for="quantity-{{ item.product.pk }}">Quantity for {{ item.product.name }}</label>
+                    <input id="quantity-{{ item.product.pk }}" class="form-control form-control-sm" style="width:5.5rem" type="number" name="quantity" min="1" max="{{ item.available_quantity }}" value="{{ item.quantity }}" required>
+                    <button class="btn btn-sm btn-outline-secondary" type="submit">Update</button>
+                  </form>
+                  <form action="{% url 'remove_cart_item' product_id=item.product.pk %}" method="post">{% csrf_token %}<button class="btn btn-sm btn-link text-danger" type="submit">Remove</button></form>
+                </div>
+              </div>
+              <div class="fw-semibold text-nowrap">€{{ item.line_total|floatformat:2 }}</div>
+            </div>
+          {% endfor %}
+        </div>
+      </div>
+      <aside class="col-lg-4">
+        <div class="border rounded-4 p-4">
+          <h2 class="h5">Order summary</h2>
+          <div class="d-flex justify-content-between py-3 border-bottom"><span class="text-secondary">Subtotal</span><strong>€{{ cart_total|floatformat:2 }}</strong></div>
+          <p class="small text-secondary mt-3">Shipping and any applicable taxes will be shown before payment is enabled.</p>
+          {% if cart_has_issues %}<button class="btn btn-primary w-100" disabled>Review cart items</button>{% else %}<a class="btn btn-primary w-100" href="{% url 'checkout' %}">Continue to checkout</a>{% endif %}
+        </div>
+      </aside>
+    </div>
+  {% endif %}
+</section>
 {% endblock %}

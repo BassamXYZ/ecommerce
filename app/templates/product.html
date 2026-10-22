@@ -1,5 +1,4 @@
 {% extends "base.html" %}
-{% load static %}
 
 {% block title %}{{ product.name }} | Store{% endblock %}
 {% block meta_description %}{{ product.description|truncatechars:160 }}{% endblock %}
@@ -8,30 +7,26 @@
 <nav class="product-breadcrumb mb-4" aria-label="Breadcrumb">
   <a href="{% url 'index' %}">Shop</a>
   <span aria-hidden="true">/</span>
-  <a href="{% url 'category' product.category.name %}">{{ product.category.name }}</a>
+  <a href="{% url 'category' category=product.category.name %}">{{ product.category.name }}</a>
   <span aria-hidden="true">/</span>
   <span aria-current="page">{{ product.name }}</span>
 </nav>
 
-<section class="product-detail" id="product-detail"
-         data-product-id="{{ product.pk }}"
-         data-product-name="{{ product.name }}"
-         data-product-price="{{ product.price }}"
-         data-product-image="{% if product.image %}{{ product.image.url }}{% endif %}"
-         data-product-available="{% if product.is_available %}true{% else %}false{% endif %}"
-         data-product-stock="{{ product.quantity }}">
+<section class="product-detail" id="product-detail">
   <div class="product-detail-media">
     {% if product.image %}
       <img class="product-detail-image" src="{{ product.image.url }}" alt="{{ product.name }}">
     {% else %}
-      <div class="product-detail-image product-detail-image-placeholder" role="img" aria-label="No product image available">No image available</div>
+      <div class="product-detail-image product-detail-image-placeholder" role="img" aria-label="No product image available">
+        No image available
+      </div>
     {% endif %}
   </div>
 
   <div class="product-detail-copy">
     <p class="page-eyebrow">{{ product.category.name }}</p>
     <h1 class="page-title">{{ product.name }}</h1>
-    <p class="product-detail-price">{{ product.price|floatformat:2 }} $</p>
+    <p class="product-detail-price">€{{ product.price|floatformat:2 }}</p>
 
     {% if product.description %}
       <div class="product-description">{{ product.description|linebreaks }}</div>
@@ -42,7 +37,7 @@
     <div class="product-availability mb-4">
       {% if product.is_available %}
         <span class="availability-dot" aria-hidden="true"></span>
-        <span>In stock</span>
+        <span>In stock · {{ product.quantity }} available</span>
       {% else %}
         <span class="availability-dot availability-dot-out" aria-hidden="true"></span>
         <span>Currently unavailable</span>
@@ -50,29 +45,68 @@
     </div>
 
     {% if product.is_available %}
-      <div class="product-purchase-row">
+      <form method="post"
+            action="{% url 'add_to_cart' product_id=product.pk %}"
+            class="product-purchase-row"
+            id="add-to-cart-form">
+        {% csrf_token %}
         <div>
           <label class="form-label fw-semibold" for="product-quantity">Quantity</label>
           <div class="quantity-control">
             <button class="btn btn-outline-secondary" type="button" data-quantity-step="-1" aria-label="Decrease quantity">−</button>
-            <input class="form-control text-center" id="product-quantity" type="number" min="1"
-                   max="{{ product.quantity }}" value="1" inputmode="numeric" aria-describedby="quantity-help">
+            <input class="form-control text-center"
+                   id="product-quantity"
+                   name="quantity"
+                   type="number"
+                   min="1"
+                   max="{{ product.quantity }}"
+                   value="1"
+                   inputmode="numeric"
+                   required
+                   aria-describedby="quantity-help">
             <button class="btn btn-outline-secondary" type="button" data-quantity-step="1" aria-label="Increase quantity">+</button>
           </div>
           <small id="quantity-help" class="form-text">Available: {{ product.quantity }}</small>
         </div>
-        <button class="btn btn-brand btn-lg product-add-button" id="add-to-cart" type="button">Add to cart</button>
-      </div>
-      <p id="cart-feedback" class="small mt-3" role="status" aria-live="polite"></p>
+        <button class="btn btn-brand btn-lg product-add-button" id="add-to-cart" type="submit">
+          Add to cart
+        </button>
+      </form>
     {% else %}
       <button class="btn btn-outline-secondary btn-lg" type="button" disabled>Out of stock</button>
     {% endif %}
 
-    <a class="back-to-category mt-4" href="{% url 'category' product.category.name %}">← More from {{ product.category.name }}</a>
+    <p class="small text-secondary mt-3">Your cart is stored on the server. Current price and stock are checked again when your order is created.</p>
+    <a class="back-to-category mt-4 d-inline-block" href="{% url 'category' category=product.category.name %}">← More from {{ product.category.name }}</a>
   </div>
 </section>
 {% endblock %}
 
 {% block extra_js %}
-  <script src="{% static 'js/product-detail.js' %}" defer></script>
+<script>
+  (() => {
+    const quantityInput = document.getElementById("product-quantity");
+    if (!quantityInput) return;
+
+    const min = Number.parseInt(quantityInput.min, 10) || 1;
+    const max = Number.parseInt(quantityInput.max, 10) || min;
+
+    const clampQuantity = () => {
+      const entered = Number.parseInt(quantityInput.value, 10);
+      const quantity = Number.isFinite(entered) ? entered : min;
+      quantityInput.value = String(Math.min(max, Math.max(min, quantity)));
+    };
+
+    document.querySelectorAll("[data-quantity-step]").forEach((button) => {
+      button.addEventListener("click", () => {
+        clampQuantity();
+        const step = Number.parseInt(button.dataset.quantityStep, 10) || 0;
+        const current = Number.parseInt(quantityInput.value, 10) || min;
+        quantityInput.value = String(Math.min(max, Math.max(min, current + step)));
+      });
+    });
+
+    quantityInput.addEventListener("change", clampQuantity);
+  })();
+</script>
 {% endblock %}

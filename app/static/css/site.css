@@ -257,3 +257,11 @@ body {
   .product-add-button { width: 100%; }
   .catalog-pagination { align-items: stretch; flex-direction: column; }
 }
+
+
+/* Cart and checkout pages */
+.cart-product-image { flex: 0 0 112px; width: 112px; height: 112px; padding: 0.5rem; }
+.cart-product-image img { width: 100%; height: 100%; object-fit: contain; }
+.product-detail-image { min-height: 300px; }
+.product-detail-image img { max-height: 620px; width: 100%; object-fit: contain; }
+.product-description { color: var(--site-muted); line-height: 1.75; }

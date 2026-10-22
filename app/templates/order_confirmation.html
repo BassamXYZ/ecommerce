@@ -1,0 +1,25 @@
+{% extends 'base.html' %}
+
+{% block title %}Order #{{ order.pk }} confirmation{% endblock %}
+
+{% block content %}
+<section class="py-5">
+  <div class="mx-auto" style="max-width: 760px">
+    <div class="text-center mb-5">
+      <div class="display-5 text-success mb-3" aria-hidden="true">✓</div>
+      <p class="text-uppercase small fw-semibold text-secondary mb-1">Order received</p>
+      <h1 class="h2">Thank you for your order</h1>
+      <p class="text-secondary">Order <strong>#{{ order.pk }}</strong> has been created. Payment is currently <strong>{{ order.get_payment_status_display|lower }}</strong>.</p>
+    </div>
+    <div class="border rounded-4 p-4 p-md-5">
+      <div class="d-flex justify-content-between border-bottom pb-3 mb-3"><h2 class="h5 mb-0">Order summary</h2><span class="text-secondary">{{ order.created_at|date:'j M Y, H:i' }}</span></div>
+      {% for item in order_items %}<div class="d-flex justify-content-between gap-3 py-2"><span>{{ item.product.name }} <span class="text-secondary">× {{ item.quantity }}</span></span><span class="text-nowrap">€{{ item.subtotal|floatformat:2 }}</span></div>{% endfor %}
+      <div class="d-flex justify-content-between border-top mt-3 pt-3 fs-5"><strong>Total</strong><strong>€{{ order.total|floatformat:2 }}</strong></div>
+      <hr class="my-4">
+      <h2 class="h6">Delivery details</h2>
+      <address class="text-secondary mb-0">{{ order.client_name }}<br>{{ order.client_street }}<br>{{ order.client_postal_code }} {{ order.client_city }}<br>{{ order.client_country }}<br>{{ order.client_email }}</address>
+    </div>
+    <div class="text-center mt-4"><a class="btn btn-primary" href="{% url 'index' %}">Continue shopping</a></div>
+  </div>
+</section>
+{% endblock %}

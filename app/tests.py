@@ -1,7 +1,9 @@
+from decimal import Decimal
 from django.test import TestCase
 from django.urls import reverse
+from django.contrib.auth import get_user_model
 
-from .models import Category, Product
+from .models import Category, Product, Customer, Order, OrderItem, Product
 
 
 class CataloguePageTests(TestCase):
@@ -197,3 +199,129 @@ class RouteNameValidationTests(TestCase):
         for name, args in names_and_args:
             with self.subTest(name=name):
                 self.assertTrue(reverse(name, args=args))
+
+
+class CartCheckoutFlowTests(TestCase):
+    def setUp(self):
+        self.category = Category.objects.create(name="Accessories")
+        self.product = Product.objects.create(
+            name="Canvas bag",
+            description="A sturdy bag",
+            price=Decimal("12.50"),
+            category=self.category,
+            quantity=5,
+            is_active=True,
+        )
+        self.checkout_data = {
+            "first_name": "Ada",
+            "last_name": "Lovelace",
+            "email": "ada@example.com",
+            "phone": "",
+            "street": "1 Analytical Engine Way",
+            "city": "London",
+            "postal_code": "N1 1AA",
+            "country": "United Kingdom",
+        }
+
+    def add_product(self, quantity=1):
+        return self.client.post(
+            reverse("add_to_cart", args=[self.product.pk]),
+            {"quantity": str(quantity)},
+            follow=True,
+        )
+
+    def test_add_to_cart_checkout_order_and_confirmation(self):
+        response = self.add_product(2)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(self.client.session["cart"][str(self.product.pk)], 2)
+
+        response = self.client.post(reverse("checkout"), self.checkout_data)
+        order = Order.objects.get()
+        self.assertRedirects(response, reverse("order_confirmation", args=[order.pk]))
+        self.assertEqual(order.total, Decimal("25.00"))
+        self.assertEqual(order.payment_status, Order.PaymentStatus.PENDING)
+        self.assertEqual(order.items.count(), 1)
+        self.assertEqual(order.items.get().unit_price, Decimal("12.50"))
+        self.product.refresh_from_db()
+        self.assertEqual(self.product.quantity, 3)
+        self.assertNotIn("cart", self.client.session)
+
+        confirmation = self.client.get(reverse("order_confirmation", args=[order.pk]))
+        self.assertEqual(confirmation.status_code, 200)
+        self.assertContains(confirmation, "Thank you for your order")
+
+    def test_empty_cart_cannot_checkout(self):
+        response = self.client.get(reverse("checkout"))
+        self.assertRedirects(response, reverse("cart"))
+        self.assertEqual(Order.objects.count(), 0)
+
+    def test_invalid_quantity_is_rejected(self):
+        response = self.add_product(0)
+        self.assertNotIn(str(self.product.pk), self.client.session.get("cart", {}))
+        self.assertEqual(Order.objects.count(), 0)
+
+    def test_checkout_rejects_insufficient_stock(self):
+        self.add_product(4)
+        self.product.quantity = 2
+        self.product.save(update_fields=["quantity"])
+        response = self.client.post(reverse("checkout"), self.checkout_data)
+        self.assertRedirects(response, reverse("cart"))
+        self.assertEqual(Order.objects.count(), 0)
+        self.product.refresh_from_db()
+        self.assertEqual(self.product.quantity, 2)
+
+    def test_deleted_product_is_removed_from_cart(self):
+        product_id = self.product.pk
+        self.client.session["cart"] = {str(product_id): 1}
+        self.client.session.save()
+        self.product.delete()
+        response = self.client.get(reverse("cart"))
+        self.assertEqual(response.status_code, 200)
+        self.assertNotIn(str(product_id), self.client.session.get("cart", {}))
+        self.assertContains(response, "no longer available")
+
+    def test_guest_cannot_view_another_orders_confirmation(self):
+        order = Order.objects.create(
+            client_name="Someone Else",
+            client_email="other@example.com",
+            client_country="NL",
+            client_city="Delft",
+            client_street="Other Street 1",
+            client_postal_code="2611AA",
+            subtotal=Decimal("12.50"),
+            total=Decimal("12.50"),
+        )
+        response = self.client.get(reverse("order_confirmation", args=[order.pk]))
+        self.assertEqual(response.status_code, 404)
+
+    def test_authenticated_order_is_only_visible_to_owner(self):
+        User = get_user_model()
+        owner = User.objects.create_user(email="owner@example.com", password="test-pass-123")
+        customer = Customer.objects.create(
+            user=owner,
+            first_name="Order",
+            last_name="Owner",
+            email="owner@example.com",
+        )
+        order = Order.objects.create(
+            customer=customer,
+            client_name="Order Owner",
+            client_email="owner@example.com",
+            client_country="NL",
+            client_city="Delft",
+            client_street="Owner Street 1",
+            client_postal_code="2611AA",
+            subtotal=Decimal("0.00"),
+            total=Decimal("0.00"),
+        )
+        other = User.objects.create_user(email="other@example.com", password="test-pass-123")
+        self.client.force_login(other)
+        response = self.client.get(reverse("order_confirmation", args=[order.pk]))
+        self.assertEqual(response.status_code, 404)
+
+    def test_product_must_be_active_to_add_to_cart(self):
+        self.product.is_active = False
+        self.product.save(update_fields=["is_active"])
+        response = self.client.post(reverse("add_to_cart", args=[self.product.pk]), {"quantity": 1})
+        self.assertEqual(response.status_code, 404)
+        self.assertEqual(OrderItem.objects.count(), 0)
