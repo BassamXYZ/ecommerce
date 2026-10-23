@@ -1,32 +1,47 @@
-import json
-from django.shortcuts import render
-from django.http import JsonResponse
-from django.contrib.auth.decorators import login_required
-from django.forms.models import model_to_dict
+from django.contrib import messages
+from django.http import Http404
+from django.shortcuts import get_object_or_404, redirect, render
+from django.views.decorators.http import require_GET, require_POST
 
-from ..models import Category, Order
+from ..models import Order
+from ..permissions import staff_required
+from ..services import InvalidTransition, mark_shipped
+
+ORDERS_PER_PAGE = 20
 
 
-@login_required
+@staff_required
+@require_GET
 def orders(request):
-    if request.method == "POST":
-        order_compleated = Order.objects.get(id=json.loads(request.body)["order_id"])
-        order_compleated.shipped = True
-        order_compleated.save()
-        orders = Order.objects.filter(shipped=False).all()
-        if len(orders) > 19:
-            order = orders[19]
-            order = model_to_dict(order)
-        else:
-            order = None
-        return JsonResponse(order, safe=False)
-    categories = Category.objects.all()
-    orders = Order.objects.filter(shipped=False, payed=True).all()
-    orders = orders[:20]
-    return render(request, "orders.html", {"orders": orders, "categories": categories})
+    """Paid orders waiting to be shipped, oldest first."""
+    to_ship = (
+        Order.objects.filter(
+            payment_status=Order.PaymentStatus.PAID,
+            fulfillment_status__in=[
+                Order.FulfillmentStatus.PENDING,
+                Order.FulfillmentStatus.PROCESSING,
+            ],
+        )
+        .prefetch_related("items__product")
+        .order_by("created_at")[:ORDERS_PER_PAGE]
+    )
+    return render(request, "orders.html", {"orders": to_ship})
 
 
-@login_required
+@staff_required
+@require_POST
+def ship_order(request, order_id):
+    order = get_object_or_404(Order, pk=order_id)
+    try:
+        mark_shipped(order)
+    except InvalidTransition as exc:
+        messages.error(request, str(exc))
+    else:
+        messages.success(request, f"Order #{order.pk} marked as shipped.")
+    return redirect("orders")
+
+
+@staff_required
+@require_GET
 def analytics(request):
-    categories = Category.objects.all()
-    return render(request, "analytics.html", {"categories": categories})
+    return render(request, "analytics.html")

@@ -1,8 +1,4 @@
-databases:
-  - name: ecommercedb
-    plan: free
-    databaseName: ecommerce
-    user: ecommerce
+# The database is Neon PostgreSQL and product images live in Neon Object Storage, so there is no Render database here. Every `sync: false` value below is a secret you enter once in the Render dashboard (Environment tab).
 
 services:
   - type: web
@@ -11,12 +7,38 @@ services:
     runtime: python
     buildCommand: "./build.sh"
     startCommand: "python -m gunicorn ecommerce.asgi:application -k uvicorn.workers.UvicornWorker"
+    healthCheckPath: /healthz/
     envVars:
-      - key: DATABASE_URL
-        fromDatabase:
-          name: ecommercedb
-          property: connectionString
+      - key: PYTHON_VERSION
+        value: 3.12.7
+      - key: DEBUG
+        value: "False"
       - key: SECRET_KEY
         generateValue: true
       - key: WEB_CONCURRENCY
-        value: 4
+        value: 2
+
+      # Neon PostgreSQL. DATABASE_URL is the pooled connection string (host contains "-pooler") used by the running app. DATABASE_URL_UNPOOLED is the direct string, used only for migrations during the build.
+      - key: DATABASE_URL
+        sync: false
+      - key: DATABASE_URL_UNPOOLED
+        sync: false
+
+      # Neon Object Storage (product images)
+      - key: AWS_STORAGE_BUCKET_NAME
+        sync: false
+      - key: AWS_ENDPOINT_URL_S3
+        sync: false
+      - key: AWS_ACCESS_KEY_ID
+        sync: false
+      - key: AWS_SECRET_ACCESS_KEY
+        sync: false
+      - key: AWS_REGION
+        sync: false
+
+      # Optional: set CREATE_SUPERUSER=1 plus the two values below to create an
+      # admin account on the next deploy.
+      - key: DJANGO_SUPERUSER_EMAIL
+        sync: false
+      - key: DJANGO_SUPERUSER_PASSWORD
+        sync: false

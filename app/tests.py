@@ -272,8 +272,9 @@ class CartCheckoutFlowTests(TestCase):
 
     def test_deleted_product_is_removed_from_cart(self):
         product_id = self.product.pk
-        self.client.session["cart"] = {str(product_id): 1}
-        self.client.session.save()
+        session = self.client.session
+        session["cart"] = {str(product_id): 1}
+        session.save()
         self.product.delete()
         response = self.client.get(reverse("cart"))
         self.assertEqual(response.status_code, 200)
@@ -325,3 +326,33 @@ class CartCheckoutFlowTests(TestCase):
         response = self.client.post(reverse("add_to_cart", args=[self.product.pk]), {"quantity": 1})
         self.assertEqual(response.status_code, 404)
         self.assertEqual(OrderItem.objects.count(), 0)
+
+    def test_client_cannot_choose_price_or_total(self):
+        self.add_product(1)
+        data = dict(self.checkout_data, price="0.01", total="0.01", unit_price="0.01", subtotal="0.01")
+        self.client.post(reverse("checkout"), data)
+        order = Order.objects.get()
+        self.assertEqual(order.total, Decimal("12.50"))
+        self.assertEqual(order.items.get().unit_price, Decimal("12.50"))
+
+    def test_checkout_rejects_missing_fields_without_creating_an_order(self):
+        self.add_product(1)
+        response = self.client.post(reverse("checkout"), {"email": "not-an-email"})
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(Order.objects.count(), 0)
+        self.product.refresh_from_db()
+        self.assertEqual(self.product.quantity, 5)
+
+    def test_stock_that_disappears_between_cart_and_checkout_is_caught(self):
+        self.add_product(3)
+        Product.objects.filter(pk=self.product.pk).update(quantity=1)
+        response = self.client.post(reverse("checkout"), self.checkout_data)
+        self.assertRedirects(response, reverse("cart"))
+        self.assertEqual(Order.objects.count(), 0)
+
+    def test_price_change_after_adding_to_cart_uses_current_price(self):
+        self.add_product(1)
+        Product.objects.filter(pk=self.product.pk).update(price=Decimal("15.00"))
+        self.client.post(reverse("checkout"), self.checkout_data)
+        self.assertEqual(Order.objects.get().total, Decimal("15.00"))
+

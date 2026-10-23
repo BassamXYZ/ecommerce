@@ -1,0 +1,1525 @@
+diff --git a/.env.example b/.env.example
+index c115504..d432bbc 100644
+--- a/.env.example
++++ b/.env.example
+@@ -2,14 +2,17 @@
+ SECRET_KEY=replace-with-a-long-random-secret
+ DEBUG=True
+ 
+-# Hosts
++# Hosts (on Render, RENDER_EXTERNAL_HOSTNAME is added automatically)
+ ALLOWED_HOSTS=127.0.0.1,localhost
+ CSRF_TRUSTED_ORIGINS=
++# Set to False only to run a DEBUG=False container over plain http locally
++# SECURE_SSL_REDIRECT=False
+ 
+ # Database
+ ## Application database connection
+ # DATABASE_URL=postgresql://...
+-## Optional direct connection
++## Neon: use the pooled string above for the app and the direct (non-pooler)
++## string here; migrations in build.sh / docker-entrypoint.sh prefer this one.
+ # DATABASE_URL_UNPOOLED=postgresql://...
+ 
+ # Internationalization
+@@ -19,9 +22,6 @@ TIME_ZONE=UTC
+ ADMIN_NAME=Bassam
+ ADMIN_EMAIL=
+ 
+-# Payeer
+-PAYEER_SHOP_ID=12345
+-
+ # Neon Object Storage (S3-compatible) for product images.
+ # Leave all of these empty to store images locally in ./media during development.
+ # The bucket must be created with the "public_read" access level.
+diff --git a/app/admin.py b/app/admin.py
+index f23cbe9..6894249 100644
+--- a/app/admin.py
++++ b/app/admin.py
+@@ -1,7 +1,109 @@
+-from django.contrib import admin
++from django.contrib import admin, messages
+ 
+-from . import models
++from . import models, services
+ 
+-admin.site.register(models.Category)
+-admin.site.register(models.Product)
+-admin.site.register(models.Order)
++
++@admin.register(models.Category)
++class CategoryAdmin(admin.ModelAdmin):
++    search_fields = ["name"]
++
++
++@admin.register(models.Product)
++class ProductAdmin(admin.ModelAdmin):
++    list_display = ["name", "category", "price", "quantity", "is_active"]
++    list_filter = ["category", "is_active"]
++    list_editable = ["price", "quantity", "is_active"]
++    search_fields = ["name", "description"]
++
++
++@admin.register(models.Customer)
++class CustomerAdmin(admin.ModelAdmin):
++    list_display = ["email", "full_name", "phone", "user", "created_at"]
++    search_fields = ["email", "first_name", "last_name"]
++
++
++@admin.register(models.Coupon)
++class CouponAdmin(admin.ModelAdmin):
++    list_display = ["code", "discount_type", "value", "is_active", "starts_at", "expires_at", "max_uses"]
++    list_filter = ["is_active", "discount_type"]
++    search_fields = ["code"]
++
++
++class ReadOnlyInline(admin.TabularInline):
++    extra = 0
++    can_delete = False
++
++    def has_add_permission(self, request, obj=None):
++        return False
++
++    def has_change_permission(self, request, obj=None):
++        return False
++
++
++class OrderItemInline(ReadOnlyInline):
++    model = models.OrderItem
++
++
++class OrderTaxInline(ReadOnlyInline):
++    model = models.OrderTax
++
++
++@admin.register(models.Order)
++class OrderAdmin(admin.ModelAdmin):
++    """
++    Orders are records of what the customer was charged, so they are read-only.
++    Status changes go through app.services (admin actions below) so stock is
++    released exactly once and invalid transitions are refused.
++    """
++
++    list_display = [
++        "id", "client_name", "total", "currency",
++        "payment_status", "fulfillment_status", "created_at",
++    ]
++    list_filter = ["payment_status", "fulfillment_status", "created_at"]
++    search_fields = ["id", "client_name", "client_email"]
++    inlines = [OrderItemInline, OrderTaxInline]
++    actions = [
++        "action_mark_paid", "action_mark_failed", "action_mark_refunded",
++        "action_mark_shipped", "action_mark_delivered",
++    ]
++
++    def get_readonly_fields(self, request, obj=None):
++        return [f.name for f in self.model._meta.fields]
++
++    def has_add_permission(self, request):
++        return False
++
++    def has_delete_permission(self, request, obj=None):
++        return False
++
++    def _apply(self, request, queryset, func, label):
++        done = 0
++        for order in queryset:
++            try:
++                func(order)
++                done += 1
++            except services.InvalidTransition as exc:
++                self.message_user(request, str(exc), messages.ERROR)
++        if done:
++            self.message_user(request, f"{done} order(s) {label}.", messages.SUCCESS)
++
++    @admin.action(description="Mark selected orders as paid (manual / testing)")
++    def action_mark_paid(self, request, queryset):
++        self._apply(request, queryset, services.mark_paid, "marked as paid")
++
++    @admin.action(description="Cancel selected unpaid orders and release stock")
++    def action_mark_failed(self, request, queryset):
++        self._apply(request, queryset, services.mark_failed, "cancelled")
++
++    @admin.action(description="Refund selected paid orders")
++    def action_mark_refunded(self, request, queryset):
++        self._apply(request, queryset, services.mark_refunded, "refunded")
++
++    @admin.action(description="Mark selected orders as shipped")
++    def action_mark_shipped(self, request, queryset):
++        self._apply(request, queryset, services.mark_shipped, "marked as shipped")
++
++    @admin.action(description="Mark selected orders as delivered")
++    def action_mark_delivered(self, request, queryset):
++        self._apply(request, queryset, services.mark_delivered, "marked as delivered")
+diff --git a/app/functions.py b/app/functions.py
+deleted file mode 100644
+index 02f92d8..0000000
+--- a/app/functions.py
++++ /dev/null
+@@ -1,17 +0,0 @@
+-from hashlib import sha256
+-
+-def get_client_ip(request):
+-    x_forwarded_for = request.META.get('HTTP_X_FORWARDED_FOR')
+-    if x_forwarded_for:
+-        ip = x_forwarded_for.split(',')[0]
+-    else:
+-        ip = request.META.get('REMOTE_ADDR')
+-    return ip
+-
+-
+-def hash_payeer_sign(*args):
+-    list_of_value_for_sign = map(str, [*args])
+-    result_string = ":".join(list_of_value_for_sign)
+-    sign_hash = sha256(result_string)
+-    sign = sign_hash.hexdigest().upper()
+-    return sign
+diff --git a/app/management/__init__.py b/app/management/__init__.py
+new file mode 100644
+index 0000000..e69de29
+diff --git a/app/management/commands/__init__.py b/app/management/commands/__init__.py
+new file mode 100644
+index 0000000..e69de29
+diff --git a/app/management/commands/expire_pending_orders.py b/app/management/commands/expire_pending_orders.py
+new file mode 100644
+index 0000000..bcb9f5c
+--- /dev/null
++++ b/app/management/commands/expire_pending_orders.py
+@@ -0,0 +1,21 @@
++from datetime import timedelta
++
++from django.core.management.base import BaseCommand
++
++from app.services import PENDING_ORDER_TTL, expire_stale_orders
++
++
++class Command(BaseCommand):
++    help = "Fail unpaid orders older than the given age and release their reserved stock."
++
++    def add_arguments(self, parser):
++        parser.add_argument(
++            "--minutes",
++            type=int,
++            default=int(PENDING_ORDER_TTL.total_seconds() // 60),
++            help="Age in minutes after which an unpaid order expires (default: %(default)s).",
++        )
++
++    def handle(self, *args, **options):
++        count = expire_stale_orders(max_age=timedelta(minutes=options["minutes"]))
++        self.stdout.write(self.style.SUCCESS(f"Expired {count} unpaid order(s)."))
+diff --git a/app/migrations/0002_order_total_matches_components.py b/app/migrations/0002_order_total_matches_components.py
+new file mode 100644
+index 0000000..070c0f7
+--- /dev/null
++++ b/app/migrations/0002_order_total_matches_components.py
+@@ -0,0 +1,18 @@
++# Generated by Django 5.1.1 on 2026-10-23 09:28
++
++import django.db.models.expressions
++from django.db import migrations, models
++
++
++class Migration(migrations.Migration):
++
++    dependencies = [
++        ('app', '0001_initial'),
++    ]
++
++    operations = [
++        migrations.AddConstraint(
++            model_name='order',
++            constraint=models.CheckConstraint(condition=models.Q(('total', django.db.models.expressions.CombinedExpression(django.db.models.expressions.CombinedExpression(django.db.models.expressions.CombinedExpression(models.F('subtotal'), '+', models.F('shipping_cost')), '+', models.F('tax_amount')), '-', models.F('discount_amount')))), name='order_total_matches_components'),
++        ),
++    ]
+diff --git a/app/models.py b/app/models.py
+index 1b129f2..2752ae9 100644
+--- a/app/models.py
++++ b/app/models.py
+@@ -497,6 +497,15 @@ class Order(models.Model):
+                 condition=Q(discount_amount__lte=F("subtotal")),
+                 name="order_discount_not_over_subtotal",
+             ),
++            models.CheckConstraint(
++                condition=Q(
++                    total=F("subtotal")
++                    + F("shipping_cost")
++                    + F("tax_amount")
++                    - F("discount_amount")
++                ),
++                name="order_total_matches_components",
++            ),
+         ]
+ 
+     def __str__(self):
+diff --git a/app/permissions.py b/app/permissions.py
+new file mode 100644
+index 0000000..057e798
+--- /dev/null
++++ b/app/permissions.py
+@@ -0,0 +1,22 @@
++from functools import wraps
++
++from django.conf import settings
++from django.contrib.auth.views import redirect_to_login
++from django.core.exceptions import PermissionDenied
++
++
++def staff_required(view):
++    """
++    Anonymous users are sent to the login page; signed-in users who are not
++    staff get a 403 (not a redirect loop to a page they cannot use).
++    """
++
++    @wraps(view)
++    def wrapped(request, *args, **kwargs):
++        if not request.user.is_authenticated:
++            return redirect_to_login(request.get_full_path(), settings.LOGIN_URL)
++        if not (request.user.is_active and request.user.is_staff):
++            raise PermissionDenied
++        return view(request, *args, **kwargs)
++
++    return wrapped
+diff --git a/app/services.py b/app/services.py
+new file mode 100644
+index 0000000..afb5b38
+--- /dev/null
++++ b/app/services.py
+@@ -0,0 +1,286 @@
++"""
++Order and payment-state business logic.
++
++Views, the admin and (later) the Stripe webhook should all go through these
++functions instead of editing ``Order`` fields directly. That keeps three
++invariants in one place:
++
++* prices, totals and stock are always computed on the server, inside a
++  transaction that holds row locks;
++* stock is reserved when an order is created and returned exactly once if the
++  order fails, expires or is refunded before shipping;
++* payment and fulfillment statuses only move along allowed transitions, and
++  every transition is idempotent (safe to retry, e.g. when a payment
++  provider re-sends a webhook).
++"""
++
++from datetime import timedelta
++from decimal import ROUND_HALF_UP, Decimal
++
++from django.db import transaction
++from django.db.models import F
++from django.utils import timezone
++
++from .models import Customer, Order, OrderItem, Product
++
++MAX_CART_QUANTITY = 99
++CENT = Decimal("0.01")
++ZERO = Decimal("0.00")
++
++# Unpaid orders keep their stock reserved for this long.
++PENDING_ORDER_TTL = timedelta(minutes=30)
++
++
++class CheckoutError(Exception):
++    """The cart cannot be turned into an order. ``messages`` are user-safe."""
++
++    def __init__(self, messages):
++        self.messages = list(dict.fromkeys(messages))
++        super().__init__("; ".join(self.messages))
++
++
++class InvalidTransition(Exception):
++    """The requested payment/fulfillment change is not allowed."""
++
++
++def money(value):
++    return Decimal(value).quantize(CENT, rounding=ROUND_HALF_UP)
++
++
++# ---------------------------------------------------------------------------
++# Order creation
++# ---------------------------------------------------------------------------
++
++
++def create_order(*, cart, shipping, user=None):
++    """
++    Create a pending order from ``cart`` ({product_id: quantity}).
++
++    Nothing from the client is trusted except product ids and quantities:
++    unit prices come from the locked product rows, totals are computed here,
++    and stock is validated and decremented in the same transaction.
++
++    ``shipping`` holds the validated checkout form data.
++    Raises CheckoutError when the cart is no longer purchasable.
++    """
++    if not cart:
++        raise CheckoutError(["Your cart is empty."])
++
++    try:
++        wanted = {int(pid): int(qty) for pid, qty in cart.items()}
++    except (TypeError, ValueError):
++        raise CheckoutError(["Your cart is invalid. Please review it."])
++
++    with transaction.atomic():
++        products = {
++            p.pk: p
++            for p in Product.objects.select_for_update()
++            .filter(pk__in=wanted)
++            .order_by("pk")
++        }
++
++        errors = []
++        for pid, qty in wanted.items():
++            product = products.get(pid)
++            if product is None or not product.is_active:
++                errors.append("A product is no longer available. Review your cart.")
++            elif qty < 1 or qty > MAX_CART_QUANTITY:
++                errors.append("A cart quantity is invalid. Review your cart.")
++            elif product.quantity < qty:
++                errors.append(
++                    f"Only {product.quantity} unit(s) of {product.name} remain. "
++                    "Review your cart."
++                )
++        if errors:
++            raise CheckoutError(errors)
++
++        subtotal = sum(
++            (money(products[pid].price) * qty for pid, qty in wanted.items()), ZERO
++        )
++        shipping_cost = ZERO  # Phase 3: shipping rules
++        tax_amount = ZERO  # Phase 3: tax rules
++        discount_amount = ZERO  # Phase 3: coupon redemption
++        total = subtotal + shipping_cost + tax_amount - discount_amount
++
++        customer = _sync_customer(user, shipping) if user else None
++
++        order = Order.objects.create(
++            customer=customer,
++            client_name=f"{shipping['first_name']} {shipping['last_name']}".strip(),
++            client_email=shipping["email"],
++            client_country=shipping["country"],
++            client_city=shipping["city"],
++            client_street=shipping["street"],
++            client_postal_code=shipping["postal_code"],
++            subtotal=subtotal,
++            shipping_cost=shipping_cost,
++            tax_amount=tax_amount,
++            discount_amount=discount_amount,
++            total=total,
++            currency="EUR",
++            payment_status=Order.PaymentStatus.PENDING,
++            fulfillment_status=Order.FulfillmentStatus.PENDING,
++        )
++
++        OrderItem.objects.bulk_create(
++            OrderItem(
++                order=order,
++                product=products[pid],
++                quantity=qty,
++                unit_price=money(products[pid].price),
++            )
++            for pid, qty in wanted.items()
++        )
++
++        for pid, qty in wanted.items():
++            products[pid].quantity -= qty
++        Product.objects.bulk_update(products.values(), ["quantity", "updated_at"])
++
++    return order
++
++
++def _sync_customer(user, shipping):
++    customer, _ = Customer.objects.get_or_create(
++        user=user,
++        defaults={
++            "first_name": shipping["first_name"],
++            "last_name": shipping["last_name"],
++            "email": shipping["email"],
++            "phone": shipping.get("phone", ""),
++        },
++    )
++    customer.first_name = shipping["first_name"]
++    customer.last_name = shipping["last_name"]
++    customer.email = shipping["email"]
++    customer.phone = shipping.get("phone", "")
++    customer.save(
++        update_fields=["first_name", "last_name", "email", "phone", "updated_at"]
++    )
++    return customer
++
++
++# ---------------------------------------------------------------------------
++# Payment and fulfillment transitions
++# ---------------------------------------------------------------------------
++
++Pay = Order.PaymentStatus
++Ful = Order.FulfillmentStatus
++
++
++def _lock(order):
++    return Order.objects.select_for_update().get(pk=order.pk)
++
++
++def _restock(order):
++    """Return reserved stock. Callers must hold the order lock."""
++    for item in order.items.order_by("product_id"):
++        Product.objects.filter(pk=item.product_id).update(
++            quantity=F("quantity") + item.quantity
++        )
++
++
++def mark_paid(order):
++    """pending -> paid. Idempotent. Call this from the payment webhook."""
++    with transaction.atomic():
++        order = _lock(order)
++        if order.payment_status == Pay.PAID:
++            return order
++        if order.payment_status != Pay.PENDING:
++            raise InvalidTransition(
++                f"Order #{order.pk} is {order.payment_status}; it cannot be marked paid."
++            )
++        order.payment_status = Pay.PAID
++        order.save(update_fields=["payment_status", "updated_at"])
++    return order
++
++
++def mark_failed(order):
++    """
++    pending -> failed, cancel fulfillment and release reserved stock.
++    Idempotent. Used for payment failures, abandoned checkouts and
++    cancelling an unpaid order.
++    """
++    with transaction.atomic():
++        order = _lock(order)
++        if order.payment_status == Pay.FAILED:
++            return order
++        if order.payment_status != Pay.PENDING:
++            raise InvalidTransition(
++                f"Order #{order.pk} is {order.payment_status}; only unpaid orders can fail. "
++                "Refund paid orders instead."
++            )
++        order.payment_status = Pay.FAILED
++        order.fulfillment_status = Ful.CANCELLED
++        order.save(update_fields=["payment_status", "fulfillment_status", "updated_at"])
++        _restock(order)
++    return order
++
++
++def mark_refunded(order):
++    """
++    paid -> refunded. If nothing has shipped yet the order is cancelled and
++    its stock released. Idempotent.
++    """
++    with transaction.atomic():
++        order = _lock(order)
++        if order.payment_status == Pay.REFUNDED:
++            return order
++        if order.payment_status != Pay.PAID:
++            raise InvalidTransition(
++                f"Order #{order.pk} is {order.payment_status}; only paid orders can be refunded."
++            )
++        order.payment_status = Pay.REFUNDED
++        fields = ["payment_status", "updated_at"]
++        if order.fulfillment_status in (Ful.PENDING, Ful.PROCESSING):
++            order.fulfillment_status = Ful.CANCELLED
++            fields.append("fulfillment_status")
++            _restock(order)
++        order.save(update_fields=fields)
++    return order
++
++
++def _advance(order, target, allowed_from):
++    with transaction.atomic():
++        order = _lock(order)
++        if order.fulfillment_status == target:
++            return order
++        if order.payment_status != Pay.PAID:
++            raise InvalidTransition(
++                f"Order #{order.pk} is not paid; it cannot be {target}."
++            )
++        if order.fulfillment_status not in allowed_from:
++            raise InvalidTransition(
++                f"Order #{order.pk} is {order.fulfillment_status}; it cannot become {target}."
++            )
++        order.fulfillment_status = target
++        order.save(update_fields=["fulfillment_status", "updated_at"])
++    return order
++
++
++def mark_processing(order):
++    return _advance(order, Ful.PROCESSING, {Ful.PENDING})
++
++
++def mark_shipped(order):
++    return _advance(order, Ful.SHIPPED, {Ful.PENDING, Ful.PROCESSING})
++
++
++def mark_delivered(order):
++    return _advance(order, Ful.DELIVERED, {Ful.SHIPPED})
++
++
++def expire_stale_orders(max_age=PENDING_ORDER_TTL, now=None):
++    """Fail unpaid orders older than ``max_age`` and release their stock."""
++    cutoff = (now or timezone.now()) - max_age
++    stale = Order.objects.filter(
++        payment_status=Pay.PENDING, created_at__lt=cutoff
++    ).values_list("pk", flat=True)
++    expired = 0
++    for pk in list(stale):
++        try:
++            order = Order.objects.get(pk=pk)
++            mark_failed(order)
++            expired += 1
++        except (InvalidTransition, Order.DoesNotExist):
++            continue  # paid or removed concurrently
++    return expired
+diff --git a/app/templates/analytics.html b/app/templates/analytics.html
+index c5a3088..9f75a02 100644
+--- a/app/templates/analytics.html
++++ b/app/templates/analytics.html
+@@ -1,6 +1,10 @@
+ {% extends 'base.html' %}
+ 
+-{% block title %}Anallytics{% endblock %}
++{% block title %}Analytics{% endblock %}
+ 
+ {% block content %}
+-{% endblock %}
+\ No newline at end of file
++<section class="py-4 py-lg-5">
++  <h1 class="h2">Analytics</h1>
++  <p class="text-secondary">Sales and inventory analytics are planned for a later phase.</p>
++</section>
++{% endblock %}
+diff --git a/app/templates/orders.html b/app/templates/orders.html
+index 13bcc64..8d63cf0 100644
+--- a/app/templates/orders.html
++++ b/app/templates/orders.html
+@@ -1,89 +1,32 @@
+ {% extends 'base.html' %}
+ 
+-{% block title %}Orders{% endblock %}
++{% block title %}Orders to ship{% endblock %}
+ 
+ {% block content %}
+-<div id="orders">
+-{% for order in orders %}
+-  <div id="{{ order.id }}" class="card m-3">
+-    <div class="card-header">
+-      <div>
+-        Email: {{ order.client_email }}
++<section class="py-4 py-lg-5">
++  <h1 class="h2 mb-4">Orders to ship</h1>
++  {% for order in orders %}
++    <div id="order-{{ order.id }}" class="card mb-3">
++      <div class="card-header">
++        <div><strong>Order #{{ order.id }}</strong> &middot; {{ order.created_at|date:"Y-m-d H:i" }}</div>
++        <div>{{ order.client_name }} &middot; {{ order.client_email }}</div>
++        <div>{{ order.client_street }}, {{ order.client_postal_code }} {{ order.client_city }}, {{ order.client_country }}</div>
++        <div>Total: {{ order.total }} {{ order.currency }} &middot; {{ order.get_fulfillment_status_display }}</div>
+       </div>
+-      <div>
+-        Date: {{ order.date }}
+-      </div>
+-      <div>
+-        Address: {{ order.client_country }}, {{ order.client_city }}, {{ order.client_street }}, {{ order.client_postal_code }}
+-      </div>
+-      <div>
+-        Total: {{ order.total }}
++      <ul class="list-group list-group-flush">
++        {% for item in order.items.all %}
++          <li class="list-group-item">{{ item.product.name }} &times; {{ item.quantity }} &middot; {{ item.unit_price }} each</li>
++        {% endfor %}
++      </ul>
++      <div class="card-footer">
++        <form method="post" action="{% url 'ship_order' order_id=order.id %}">
++          {% csrf_token %}
++          <button class="btn btn-info" type="submit">Mark as shipped</button>
++        </form>
+       </div>
+     </div>
+-    <ul class="list-group list-group-flush">
+-      {% for item in order.items %}
+-      <li class="list-group-item">
+-        <div>
+-          Product Name: {{ item.product.name }}
+-        </div>
+-        <div>
+-          Quantity: {{ item.quantity }}
+-        </div>
+-      </li>
+-      {% endfor %}
+-    </ul>
+-    <div class="card-footer">
+-      <button class="btn btn-info" onclick="done({{ order.id }})">Done</button>
+-    </div>
+-  </div>
++  {% empty %}
++    <p class="text-secondary">No paid orders are waiting to be shipped.</p>
+   {% endfor %}
+-</div>
+-<script>
+-  function getCookie(name) {
+-    let cookieValue = null;
+-    if (document.cookie && document.cookie !== '') {
+-      const cookies = document.cookie.split(';');
+-      for (let i = 0; i < cookies.length; i++) {
+-        const cookie = cookies[i].trim();
+-        if (cookie.substring(0, name.length + 1) === (name + '=')) {
+-          cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+-          break;
+-        }
+-      }
+-    }
+-    return cookieValue;
+-  }
+-  const csrftoken = getCookie('csrftoken');
+-
+-  function done(orderId) {
+-    var url = "{% url 'orders' %}";
+-    fetch(url, {
+-      method: "POST",
+-      headers: {
+-        'Content-type': "application/json",
+-        'X-CSRFToken': csrftoken,
+-      },
+-      body: JSON.stringify({ 'order_id': orderId })
+-    }).then(res => res.json()).then(data => {
+-      document.getElementById(orderId).remove();
+-
+-      if (!data) {
+-        return
+-      }
+-
+-      let html = '<div id="' + data.id + '" class="card m-3"><div class= "card-header" ><div>Email: '
+-        + data.order.email + '</div><div>Address: ' + data.order.address + '</div><div>Total: ' + data.order.total
+-        + '</div></div><ul class="list-group list-group-flush">';
+-      
+-      data.order.items.forEach(item => {
+-        html += '<li class="list-group-item"><div>Product Name: ' + item.name + '</div><div>Quantity: '
+-          + item.qty + '</div><div>Price: ' + item.price + '</div></li>'
+-      });
+-      
+-      html += '</ul><div class="card-footer"><button class="btn btn-info" onclick="done(' + data.id + ')">Done</button></div></div>';
+-
+-      document.getElementById("orders").innerHTML += html;
+-    })
+-  }
+-</script>
+-{% endblock %}
+\ No newline at end of file
++</section>
++{% endblock %}
+diff --git a/app/test_dashboard.py b/app/test_dashboard.py
+new file mode 100644
+index 0000000..11f9310
+--- /dev/null
++++ b/app/test_dashboard.py
+@@ -0,0 +1,100 @@
++from django.contrib.auth import get_user_model
++from django.test import TestCase
++from django.urls import reverse
++
++from . import services
++from .models import Category, Order, Product
++from .test_services import SHIPPING
++
++
++class StaffOnlyTests(TestCase):
++    @classmethod
++    def setUpTestData(cls):
++        User = get_user_model()
++        cls.customer = User.objects.create_user("c@example.com", "pw-Str0ng!pass")
++        cls.staff = User.objects.create_user("s@example.com", "pw-Str0ng!pass", is_staff=True)
++        cat = Category.objects.create(name="Shoes")
++        cls.product = Product.objects.create(name="A", price="10.00", category=cat, quantity=5)
++
++    def make_order(self, paid=True):
++        order = services.create_order(cart={str(self.product.pk): 1}, shipping=SHIPPING)
++        if paid:
++            services.mark_paid(order)
++        return order
++
++    def test_anonymous_users_are_sent_to_login(self):
++        for name in ("orders", "analytics"):
++            response = self.client.get(reverse(name))
++            self.assertEqual(response.status_code, 302)
++            self.assertIn(reverse("accounts:login"), response["Location"])
++
++    def test_regular_customers_get_403(self):
++        self.client.force_login(self.customer)
++        for name in ("orders", "analytics"):
++            self.assertEqual(self.client.get(reverse(name)).status_code, 403)
++        order = self.make_order()
++        response = self.client.post(reverse("ship_order", args=[order.pk]))
++        self.assertEqual(response.status_code, 403)
++        order.refresh_from_db()
++        self.assertEqual(order.fulfillment_status, Order.FulfillmentStatus.PENDING)
++
++    def test_inactive_staff_cannot_use_dashboard(self):
++        self.staff.is_active = False
++        self.staff.save()
++        self.client.force_login(self.staff)  # inactive users cannot stay logged in
++        self.assertNotEqual(self.client.get(reverse("orders")).status_code, 200)
++
++    def test_staff_sees_only_paid_unshipped_orders(self):
++        paid = self.make_order()
++        unpaid = self.make_order(paid=False)
++        self.client.force_login(self.staff)
++        response = self.client.get(reverse("orders"))
++        self.assertEqual(response.status_code, 200)
++        self.assertContains(response, f"Order #{paid.pk}")
++        self.assertNotContains(response, f"Order #{unpaid.pk}")
++
++    def test_staff_can_ship_a_paid_order(self):
++        order = self.make_order()
++        self.client.force_login(self.staff)
++        response = self.client.post(reverse("ship_order", args=[order.pk]))
++        self.assertRedirects(response, reverse("orders"))
++        order.refresh_from_db()
++        self.assertEqual(order.fulfillment_status, Order.FulfillmentStatus.SHIPPED)
++
++    def test_shipping_an_unpaid_order_is_refused(self):
++        order = self.make_order(paid=False)
++        self.client.force_login(self.staff)
++        self.client.post(reverse("ship_order", args=[order.pk]))
++        order.refresh_from_db()
++        self.assertEqual(order.fulfillment_status, Order.FulfillmentStatus.PENDING)
++
++    def test_ship_requires_post(self):
++        order = self.make_order()
++        self.client.force_login(self.staff)
++        self.assertEqual(self.client.get(reverse("ship_order", args=[order.pk])).status_code, 405)
++
++    def test_admin_actions_use_state_rules(self):
++        admin = get_user_model().objects.create_superuser("root@example.com", "pw-Str0ng!pass")
++        self.client.force_login(admin)
++        order = self.make_order(paid=False)
++        data = {"action": "action_mark_failed", "_selected_action": [order.pk]}
++        self.client.post(reverse("admin:app_order_changelist"), data)
++        order.refresh_from_db()
++        self.assertEqual(order.payment_status, Order.PaymentStatus.FAILED)
++        self.product.refresh_from_db()
++        self.assertEqual(self.product.quantity, 5)
++
++    def test_admin_order_page_is_read_only(self):
++        admin = get_user_model().objects.create_superuser("root@example.com", "pw-Str0ng!pass")
++        self.client.force_login(admin)
++        order = self.make_order()
++        response = self.client.get(reverse("admin:app_order_change", args=[order.pk]))
++        self.assertEqual(response.status_code, 200)
++        self.assertNotContains(response, 'name="payment_status"')
++
++
++class HealthCheckTests(TestCase):
++    def test_healthz_reports_ok(self):
++        response = self.client.get(reverse("healthz"))
++        self.assertEqual(response.status_code, 200)
++        self.assertEqual(response.json(), {"status": "ok"})
+diff --git a/app/test_services.py b/app/test_services.py
+new file mode 100644
+index 0000000..249e8f1
+--- /dev/null
++++ b/app/test_services.py
+@@ -0,0 +1,159 @@
++from datetime import timedelta
++from decimal import Decimal
++
++from django.db import IntegrityError, transaction
++from django.test import TestCase
++from django.utils import timezone
++
++from . import services
++from .models import Category, Order, Product
++
++SHIPPING = {
++    "first_name": "Ada", "last_name": "Lovelace", "email": "ada@example.com",
++    "phone": "", "street": "1 Engine Way", "city": "London",
++    "postal_code": "N1 1AA", "country": "UK",
++}
++
++
++class ServiceTestBase(TestCase):
++    def setUp(self):
++        cat = Category.objects.create(name="Shoes")
++        self.a = Product.objects.create(name="A", price="19.99", category=cat, quantity=5)
++        self.b = Product.objects.create(name="B", price="0.10", category=cat, quantity=2)
++
++    def make_order(self, cart=None):
++        return services.create_order(
++            cart=cart or {str(self.a.pk): 2, str(self.b.pk): 1}, shipping=SHIPPING
++        )
++
++    def stock(self, product):
++        product.refresh_from_db()
++        return product.quantity
++
++
++class CreateOrderTests(ServiceTestBase):
++    def test_totals_come_from_database_prices_and_stock_is_reserved(self):
++        order = self.make_order()
++        self.assertEqual(order.subtotal, Decimal("40.08"))
++        self.assertEqual(order.total, order.calculated_total)
++        self.assertEqual(order.total, Decimal("40.08"))
++        self.assertEqual(self.stock(self.a), 3)
++        self.assertEqual(self.stock(self.b), 1)
++        self.assertEqual({i.unit_price for i in order.items.all()}, {Decimal("19.99"), Decimal("0.10")})
++
++    def test_order_keeps_price_snapshot_when_product_price_changes(self):
++        order = self.make_order()
++        self.a.price = Decimal("99.00")
++        self.a.save()
++        order.refresh_from_db()
++        self.assertEqual(order.total, Decimal("40.08"))
++        self.assertEqual(order.items.get(product=self.a).unit_price, Decimal("19.99"))
++
++    def test_insufficient_stock_creates_nothing(self):
++        with self.assertRaises(services.CheckoutError):
++            self.make_order({str(self.a.pk): 6})
++        self.assertEqual(Order.objects.count(), 0)
++        self.assertEqual(self.stock(self.a), 5)
++
++    def test_one_bad_line_rolls_back_the_good_ones(self):
++        with self.assertRaises(services.CheckoutError):
++            self.make_order({str(self.a.pk): 1, str(self.b.pk): 3})
++        self.assertEqual(Order.objects.count(), 0)
++        self.assertEqual(self.stock(self.a), 5)
++
++    def test_inactive_unknown_and_invalid_quantities_are_rejected(self):
++        self.b.is_active = False
++        self.b.save()
++        for cart in ({str(self.b.pk): 1}, {"999999": 1}, {str(self.a.pk): 0},
++                     {str(self.a.pk): -1}, {str(self.a.pk): 100}, {}):
++            with self.subTest(cart=cart), self.assertRaises(services.CheckoutError):
++                self.make_order(cart)
++        self.assertEqual(Order.objects.count(), 0)
++
++    def test_database_rejects_inconsistent_totals(self):
++        order = self.make_order()
++        order.total = Decimal("1.00")
++        with self.assertRaises(IntegrityError), transaction.atomic():
++            order.save()
++
++
++class PaymentStateTests(ServiceTestBase):
++    def test_mark_paid_is_idempotent(self):
++        order = self.make_order()
++        services.mark_paid(order)
++        services.mark_paid(order)
++        order.refresh_from_db()
++        self.assertEqual(order.payment_status, Order.PaymentStatus.PAID)
++
++    def test_failed_order_releases_stock_exactly_once(self):
++        order = self.make_order()
++        services.mark_failed(order)
++        services.mark_failed(order)  # retry must not restock twice
++        self.assertEqual(self.stock(self.a), 5)
++        self.assertEqual(self.stock(self.b), 2)
++        order.refresh_from_db()
++        self.assertEqual(order.payment_status, Order.PaymentStatus.FAILED)
++        self.assertEqual(order.fulfillment_status, Order.FulfillmentStatus.CANCELLED)
++
++    def test_failed_order_cannot_be_paid_later(self):
++        order = self.make_order()
++        services.mark_failed(order)
++        with self.assertRaises(services.InvalidTransition):
++            services.mark_paid(order)
++
++    def test_paid_order_cannot_be_failed_only_refunded(self):
++        order = self.make_order()
++        services.mark_paid(order)
++        with self.assertRaises(services.InvalidTransition):
++            services.mark_failed(order)
++        self.assertEqual(self.stock(self.a), 3)
++
++    def test_refund_before_shipping_cancels_and_restocks(self):
++        order = self.make_order()
++        services.mark_paid(order)
++        services.mark_refunded(order)
++        services.mark_refunded(order)
++        self.assertEqual(self.stock(self.a), 5)
++        order.refresh_from_db()
++        self.assertEqual(order.fulfillment_status, Order.FulfillmentStatus.CANCELLED)
++
++    def test_refund_after_shipping_does_not_restock(self):
++        order = self.make_order()
++        services.mark_paid(order)
++        services.mark_shipped(order)
++        services.mark_refunded(order)
++        self.assertEqual(self.stock(self.a), 3)
++        order.refresh_from_db()
++        self.assertEqual(order.fulfillment_status, Order.FulfillmentStatus.SHIPPED)
++
++    def test_cannot_ship_unpaid_order(self):
++        order = self.make_order()
++        with self.assertRaises(services.InvalidTransition):
++            services.mark_shipped(order)
++
++    def test_fulfillment_must_follow_order(self):
++        order = self.make_order()
++        services.mark_paid(order)
++        with self.assertRaises(services.InvalidTransition):
++            services.mark_delivered(order)  # not shipped yet
++        services.mark_shipped(order)
++        services.mark_delivered(order)
++        with self.assertRaises(services.InvalidTransition):
++            services.mark_processing(order)
++
++
++class ExpiryTests(ServiceTestBase):
++    def test_only_stale_unpaid_orders_expire(self):
++        stale = self.make_order({str(self.a.pk): 1})
++        fresh = self.make_order({str(self.a.pk): 1})
++        paid = self.make_order({str(self.a.pk): 1})
++        services.mark_paid(paid)
++        old = timezone.now() - timedelta(hours=2)
++        Order.objects.filter(pk__in=[stale.pk, paid.pk]).update(created_at=old)
++
++        self.assertEqual(services.expire_stale_orders(), 1)
++
++        for order, status in ((stale, "failed"), (fresh, "pending"), (paid, "paid")):
++            order.refresh_from_db()
++            self.assertEqual(order.payment_status, status)
++        self.assertEqual(self.stock(self.a), 3)  # 5 - fresh - paid; stale returned
+diff --git a/app/tests.py b/app/tests.py
+index 9ffcded..2b63eed 100644
+--- a/app/tests.py
++++ b/app/tests.py
+@@ -272,8 +272,9 @@ class CartCheckoutFlowTests(TestCase):
+ 
+     def test_deleted_product_is_removed_from_cart(self):
+         product_id = self.product.pk
+-        self.client.session["cart"] = {str(product_id): 1}
+-        self.client.session.save()
++        session = self.client.session
++        session["cart"] = {str(product_id): 1}
++        session.save()
+         self.product.delete()
+         response = self.client.get(reverse("cart"))
+         self.assertEqual(response.status_code, 200)
+@@ -325,3 +326,33 @@ class CartCheckoutFlowTests(TestCase):
+         response = self.client.post(reverse("add_to_cart", args=[self.product.pk]), {"quantity": 1})
+         self.assertEqual(response.status_code, 404)
+         self.assertEqual(OrderItem.objects.count(), 0)
++
++    def test_client_cannot_choose_price_or_total(self):
++        self.add_product(1)
++        data = dict(self.checkout_data, price="0.01", total="0.01", unit_price="0.01", subtotal="0.01")
++        self.client.post(reverse("checkout"), data)
++        order = Order.objects.get()
++        self.assertEqual(order.total, Decimal("12.50"))
++        self.assertEqual(order.items.get().unit_price, Decimal("12.50"))
++
++    def test_checkout_rejects_missing_fields_without_creating_an_order(self):
++        self.add_product(1)
++        response = self.client.post(reverse("checkout"), {"email": "not-an-email"})
++        self.assertEqual(response.status_code, 400)
++        self.assertEqual(Order.objects.count(), 0)
++        self.product.refresh_from_db()
++        self.assertEqual(self.product.quantity, 5)
++
++    def test_stock_that_disappears_between_cart_and_checkout_is_caught(self):
++        self.add_product(3)
++        Product.objects.filter(pk=self.product.pk).update(quantity=1)
++        response = self.client.post(reverse("checkout"), self.checkout_data)
++        self.assertRedirects(response, reverse("cart"))
++        self.assertEqual(Order.objects.count(), 0)
++
++    def test_price_change_after_adding_to_cart_uses_current_price(self):
++        self.add_product(1)
++        Product.objects.filter(pk=self.product.pk).update(price=Decimal("15.00"))
++        self.client.post(reverse("checkout"), self.checkout_data)
++        self.assertEqual(Order.objects.get().total, Decimal("15.00"))
++
+diff --git a/app/urls.py b/app/urls.py
+index 5b575d0..316c056 100644
+--- a/app/urls.py
++++ b/app/urls.py
+@@ -6,6 +6,7 @@ from django.conf.urls.static import static
+ from .views import main, payment, dashboard
+ 
+ urlpatterns = [
++    path("healthz/", main.healthz, name="healthz"),
+     path("", main.index, name="index"),
+     path("search/", main.search, name="search"),
+     path("category/<str:category>", main.category, name="category"),
+@@ -18,6 +19,7 @@ urlpatterns = [
+     path("checkout/", payment.checkout, name="checkout"),
+     path("orders/<int:order_id>/confirmation/", payment.order_confirmation, name="order_confirmation"),
+     path("orders/", dashboard.orders, name="orders"),
++    path("orders/<int:order_id>/ship/", dashboard.ship_order, name="ship_order"),
+     path("analytics/", dashboard.analytics, name="analytics"),
+ ]
+ 
+diff --git a/app/views/dashboard.py b/app/views/dashboard.py
+index 1700e70..39d7ff2 100644
+--- a/app/views/dashboard.py
++++ b/app/views/dashboard.py
+@@ -1,32 +1,48 @@
+-import json
+-from django.shortcuts import render
+-from django.http import JsonResponse
+-from django.contrib.auth.decorators import login_required
+-from django.forms.models import model_to_dict
++from django.contrib import messages
++from django.http import Http404
++from django.shortcuts import get_object_or_404, redirect, render
++from django.views.decorators.http import require_GET, require_POST
+ 
+-from ..models import Category, Order
++from ..models import Order
++from ..permissions import staff_required
++from ..services import InvalidTransition, mark_shipped
+ 
++ORDERS_PER_PAGE = 20
+ 
+-@login_required
++
++@staff_required
++@require_GET
+ def orders(request):
+-    if request.method == "POST":
+-        order_compleated = Order.objects.get(id=json.loads(request.body)["order_id"])
+-        order_compleated.shipped = True
+-        order_compleated.save()
+-        orders = Order.objects.filter(shipped=False).all()
+-        if len(orders) > 19:
+-            order = orders[19]
+-            order = model_to_dict(order)
+-        else:
+-            order = None
+-        return JsonResponse(order, safe=False)
+-    categories = Category.objects.all()
+-    orders = Order.objects.filter(shipped=False, payed=True).all()
+-    orders = orders[:20]
+-    return render(request, "orders.html", {"orders": orders, "categories": categories})
+-
+-
+-@login_required
++    """Paid orders waiting to be shipped, oldest first."""
++    to_ship = (
++        Order.objects.filter(
++            payment_status=Order.PaymentStatus.PAID,
++            fulfillment_status__in=[
++                Order.FulfillmentStatus.PENDING,
++                Order.FulfillmentStatus.PROCESSING,
++            ],
++        )
++        .prefetch_related("items__product")
++        .order_by("created_at")[:ORDERS_PER_PAGE]
++    )
++    return render(request, "orders.html", {"orders": to_ship})
++
++
++@staff_required
++@require_POST
++def ship_order(request, order_id):
++    order = get_object_or_404(Order, pk=order_id)
++    try:
++        mark_shipped(order)
++    except InvalidTransition as exc:
++        messages.error(request, str(exc))
++    else:
++        messages.success(request, f"Order #{order.pk} marked as shipped.")
++    return redirect("orders")
++
++
++@staff_required
++@require_GET
+ def analytics(request):
+-    categories = Category.objects.all()
+-    return render(request, "analytics.html", {"categories": categories})
++    # Sales and inventory analytics arrive in Phase 4.
++    return render(request, "analytics.html")
+diff --git a/app/views/main.py b/app/views/main.py
+index 86e3cdb..8b8a4fc 100644
+--- a/app/views/main.py
++++ b/app/views/main.py
+@@ -1,6 +1,7 @@
+ from django.core.paginator import Paginator
+ from django.db.models import Prefetch, Q
+-from django.http import Http404
++from django.db import connection
++from django.http import Http404, JsonResponse
+ from django.shortcuts import get_object_or_404, render
+ 
+ from ..models import Category, Product
+@@ -126,3 +127,14 @@ def product(request, category, product):
+     if product_obj is None:
+         raise Http404("Product not found.")
+     return _render_product_detail(request, product_obj)
++
++
++def healthz(request):
++    """Liveness/readiness probe for the hosting platform: checks the database."""
++    try:
++        with connection.cursor() as cursor:
++            cursor.execute("SELECT 1")
++            cursor.fetchone()
++    except Exception:
++        return JsonResponse({"status": "error"}, status=503)
++    return JsonResponse({"status": "ok"})
+diff --git a/app/views/payment.py b/app/views/payment.py
+index f4e3132..322fbdc 100644
+--- a/app/views/payment.py
++++ b/app/views/payment.py
+@@ -1,18 +1,17 @@
+ from decimal import Decimal
+ 
+ from django.contrib import messages
+-from django.db import transaction
+ from django.http import Http404, HttpResponseNotAllowed
+ from django.shortcuts import get_object_or_404, redirect, render
+ from django.urls import reverse
+ from django.views.decorators.http import require_POST
+ 
+ from ..forms import CheckoutForm
+-from ..models import Category, Customer, Order, OrderItem, Product
++from ..models import Category, Customer, Order, Product
++from ..services import MAX_CART_QUANTITY, CheckoutError, create_order
+ 
+ CART_SESSION_KEY = "cart"
+ GUEST_ORDERS_SESSION_KEY = "guest_order_ids"
+-MAX_CART_QUANTITY = 99
+ 
+ 
+ def _get_session_cart(request):
+@@ -195,78 +194,16 @@ def checkout(request):
+             "cart_total": cart_total,
+         }, status=400)
+ 
+-    cleaned = form.cleaned_data
+     cart = _get_session_cart(request)
+-    order = None
+-    inventory_errors = []
+-
+-    # Lock products and validate stock again in the same transaction that creates
+-    # the order and decrements inventory. This prevents ordinary concurrent
+-    # checkouts from selling the same final unit on databases supporting row locks.
+-    with transaction.atomic():
+-        ids = [int(product_id) for product_id in cart]
+-        locked_products = Product.objects.select_for_update().filter(pk__in=ids).order_by("pk")
+-        product_by_id = {str(product.pk): product for product in locked_products}
+-        for product_id, quantity in cart.items():
+-            product = product_by_id.get(product_id)
+-            if product is None or not product.is_active:
+-                inventory_errors.append("A product is no longer available. Review your cart.")
+-            elif quantity < 1 or quantity > MAX_CART_QUANTITY:
+-                inventory_errors.append("A cart quantity is invalid. Review your cart.")
+-            elif product.quantity < quantity:
+-                inventory_errors.append(f"Only {product.quantity} unit(s) of {product.name} remain. Review your cart.")
+-
+-        if not inventory_errors:
+-            subtotal = sum(
+-                (product_by_id[product_id].price * quantity for product_id, quantity in cart.items()),
+-                Decimal("0.00"),
+-            )
+-            customer = None
+-            if request.user.is_authenticated:
+-                customer, _ = Customer.objects.get_or_create(
+-                    user=request.user,
+-                    defaults={
+-                        "first_name": cleaned["first_name"],
+-                        "last_name": cleaned["last_name"],
+-                        "email": cleaned["email"],
+-                        "phone": cleaned["phone"],
+-                    },
+-                )
+-                # Keep the profile current, but order snapshots below remain stable.
+-                customer.first_name = cleaned["first_name"]
+-                customer.last_name = cleaned["last_name"]
+-                customer.email = cleaned["email"]
+-                customer.phone = cleaned["phone"]
+-                customer.save(update_fields=["first_name", "last_name", "email", "phone", "updated_at"])
+-
+-            order = Order.objects.create(
+-                customer=customer,
+-                client_name=f"{cleaned['first_name']} {cleaned['last_name']}".strip(),
+-                client_email=cleaned["email"],
+-                client_country=cleaned["country"],
+-                client_city=cleaned["city"],
+-                client_street=cleaned["street"],
+-                client_postal_code=cleaned["postal_code"],
+-                subtotal=subtotal,
+-                total=subtotal,
+-                currency="EUR",
+-                payment_status=Order.PaymentStatus.PENDING,
+-                fulfillment_status=Order.FulfillmentStatus.PENDING,
+-            )
+-            for product_id, quantity in cart.items():
+-                product = product_by_id[product_id]
+-                OrderItem.objects.create(
+-                    order=order,
+-                    product=product,
+-                    quantity=quantity,
+-                    unit_price=product.price,
+-                )
+-                product.quantity -= quantity
+-                product.save(update_fields=["quantity", "updated_at"])
+-
+-    if inventory_errors:
+-        for issue in dict.fromkeys(inventory_errors):
+-            messages.error(request, issue)
++    try:
++        order = create_order(
++            cart=cart,
++            shipping=form.cleaned_data,
++            user=request.user if request.user.is_authenticated else None,
++        )
++    except CheckoutError as exc:
++        for message in exc.messages:
++            messages.error(request, message)
+         return redirect("cart")
+ 
+     # A guest may revisit the confirmation only from the same session. Authenticated
+@@ -278,7 +215,7 @@ def checkout(request):
+         request.session[GUEST_ORDERS_SESSION_KEY] = guest_order_ids[-20:]
+     request.session.pop(CART_SESSION_KEY, None)
+     request.session.modified = True
+-    messages.success(request, f"Order #{order.pk} was created. Payment is pending.")
++    messages.info(request, f"Order #{order.pk} was created. Payment is pending.")
+     return redirect("order_confirmation", order_id=order.pk)
+ 
+ 
+diff --git a/build.sh b/build.sh
+index 7ea4494..6176449 100644
+--- a/build.sh
++++ b/build.sh
+@@ -8,10 +8,12 @@ pip install -r requirements.txt
+ # Convert static asset files
+ python manage.py collectstatic --no-input
+ 
+-# Apply any outstanding database migrations
+-python manage.py migrate
++# Apply any outstanding database migrations. On Neon, migrations should use the
++# direct (unpooled) connection when DATABASE_URL_UNPOOLED is provided.
++DATABASE_URL="${DATABASE_URL_UNPOOLED:-$DATABASE_URL}" python manage.py migrate
+ 
+ if [[ $CREATE_SUPERUSER ]];
+ then
+-  python manage.py createsuperuser --no-input
+-fi
+\ No newline at end of file
++  # Needs DJANGO_SUPERUSER_EMAIL and DJANGO_SUPERUSER_PASSWORD. Not an error if it already exists.
++  python manage.py createsuperuser --no-input || echo "Superuser already exists or could not be created."
++fi
+diff --git a/docker-entrypoint.sh b/docker-entrypoint.sh
+index e2dc735..d7eb5eb 100644
+--- a/docker-entrypoint.sh
++++ b/docker-entrypoint.sh
+@@ -2,7 +2,7 @@
+ # Same steps as your build.sh, but run when the container starts
+ set -o errexit
+ 
+-python manage.py migrate --no-input
++DATABASE_URL="${DATABASE_URL_UNPOOLED:-$DATABASE_URL}" python manage.py migrate --no-input
+ python manage.py collectstatic --no-input
+ 
+ if [[ -n "$CREATE_SUPERUSER" ]]; then
+diff --git a/ecommerce/settings.py b/ecommerce/settings.py
+index b52232e..4d42282 100644
+--- a/ecommerce/settings.py
++++ b/ecommerce/settings.py
+@@ -6,6 +6,7 @@ configuration. A local .env file is loaded when present.
+ """
+ 
+ import os
++import sys
+ from pathlib import Path
+ from urllib.parse import urlparse
+ 
+@@ -47,6 +48,8 @@ if not SECRET_KEY:
+ 
+ DEBUG = env_bool("DEBUG", False)
+ 
++TESTING = "test" in sys.argv
++
+ ALLOWED_HOSTS = env_list(
+     "ALLOWED_HOSTS",
+     "127.0.0.1,localhost",
+@@ -54,11 +57,30 @@ ALLOWED_HOSTS = env_list(
+ 
+ CSRF_TRUSTED_ORIGINS = env_list("CSRF_TRUSTED_ORIGINS")
+ 
++# Render sets RENDER_EXTERNAL_HOSTNAME (e.g. myshop.onrender.com) for web
++# services, so the deployed site works without hand-written host settings.
++RENDER_EXTERNAL_HOSTNAME = os.getenv("RENDER_EXTERNAL_HOSTNAME")
++if RENDER_EXTERNAL_HOSTNAME:
++    if RENDER_EXTERNAL_HOSTNAME not in ALLOWED_HOSTS:
++        ALLOWED_HOSTS.append(RENDER_EXTERNAL_HOSTNAME)
++    _render_origin = f"https://{RENDER_EXTERNAL_HOSTNAME}"
++    if _render_origin not in CSRF_TRUSTED_ORIGINS:
++        CSRF_TRUSTED_ORIGINS.append(_render_origin)
++
+ # Render and other reverse proxies terminate HTTPS before forwarding requests
+ # to Django. This tells Django to trust the forwarded HTTPS header.
+ if not DEBUG:
+     SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+ 
++# Production hardening. Set SECURE_SSL_REDIRECT=False to run a production-mode
++# container over plain HTTP locally.
++SECURE_SSL_REDIRECT = env_bool("SECURE_SSL_REDIRECT", not DEBUG)
++SECURE_REDIRECT_EXEMPT = [r"^healthz/$"]
++SESSION_COOKIE_SECURE = not DEBUG
++CSRF_COOKIE_SECURE = not DEBUG
++SECURE_HSTS_SECONDS = int(os.getenv("SECURE_HSTS_SECONDS", "0" if DEBUG else "3600"))
++SECURE_CONTENT_TYPE_NOSNIFF = True
++
+ 
+ # ---------------------------------------------------------------------------
+ # Application definition
+@@ -133,6 +155,11 @@ DATABASES = {
+     )
+ }
+ 
++# Neon's pooled endpoint (host contains "-pooler") runs PgBouncer in
++# transaction mode, which does not support server-side cursors.
++if "-pooler" in (DATABASES["default"].get("HOST") or ""):
++    DATABASES["default"]["DISABLE_SERVER_SIDE_CURSORS"] = True
++
+ 
+ # ---------------------------------------------------------------------------
+ # Password validation
+@@ -159,20 +186,22 @@ AUTH_PASSWORD_VALIDATORS = [
+ 
+ # In development, print emails to the terminal instead of sending them.
+ # In production, use an SMTP provider configured through environment variables.
++EMAIL_HOST = os.getenv("EMAIL_HOST", "localhost")
++EMAIL_HOST_USER = os.getenv("EMAIL_HOST_USER", "")
++EMAIL_HOST_PASSWORD = os.getenv("EMAIL_HOST_PASSWORD", "")
++
++# Use SMTP only when it is actually configured; otherwise print emails to the
++# log so password reset never crashes with a connection error.
+ EMAIL_BACKEND = (
+-    "django.core.mail.backends.console.EmailBackend"
+-    if DEBUG
+-    else "django.core.mail.backends.smtp.EmailBackend"
++    "django.core.mail.backends.smtp.EmailBackend"
++    if (not DEBUG and EMAIL_HOST_USER)
++    else "django.core.mail.backends.console.EmailBackend"
+ )
+-
+-EMAIL_HOST = os.getenv("EMAIL_HOST", "localhost")
+ EMAIL_PORT = int(os.getenv("EMAIL_PORT", "587"))
+ 
+ EMAIL_USE_TLS = env_bool("EMAIL_USE_TLS", True)
+ EMAIL_USE_SSL = env_bool("EMAIL_USE_SSL", False)
+ 
+-EMAIL_HOST_USER = os.getenv("EMAIL_HOST_USER", "")
+-EMAIL_HOST_PASSWORD = os.getenv("EMAIL_HOST_PASSWORD", "")
+ EMAIL_TIMEOUT = int(os.getenv("EMAIL_TIMEOUT", "10"))
+ 
+ DEFAULT_FROM_EMAIL = os.getenv(
+@@ -210,7 +239,13 @@ STORAGES = {
+         "BACKEND": "django.core.files.storage.FileSystemStorage",
+     },
+     "staticfiles": {
+-        "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage",
++        # The manifest storage needs `collectstatic` to have run, so tests use
++        # plain storage and work from a fresh clone.
++        "BACKEND": (
++            "django.contrib.staticfiles.storage.StaticFilesStorage"
++            if TESTING
++            else "whitenoise.storage.CompressedManifestStaticFilesStorage"
++        ),
+     },
+ }
+ 
+@@ -283,13 +318,6 @@ else:
+     MEDIA_ROOT = BASE_DIR / "media"
+ 
+ 
+-# ---------------------------------------------------------------------------
+-# Project-specific settings
+-# ---------------------------------------------------------------------------
+-
+-PAYEER_SHOP_ID = os.getenv("PAYEER_SHOP_ID", "12345")
+-
+-
+ # ---------------------------------------------------------------------------
+ # Admin notifications
+ # ---------------------------------------------------------------------------
+@@ -302,6 +330,21 @@ if ADMIN_EMAIL:
+     ADMINS = [(ADMIN_NAME, ADMIN_EMAIL)]
+ 
+ 
++# ---------------------------------------------------------------------------
++# Logging (Render collects stdout/stderr)
++# ---------------------------------------------------------------------------
++
++LOGGING = {
++    "version": 1,
++    "disable_existing_loggers": False,
++    "handlers": {"console": {"class": "logging.StreamHandler"}},
++    "root": {
++        "handlers": ["console"],
++        "level": "CRITICAL" if TESTING else os.getenv("LOG_LEVEL", "INFO"),
++    },
++}
++
++
+ # ---------------------------------------------------------------------------
+ # Default primary key field type
+ # ---------------------------------------------------------------------------
+diff --git a/render.yaml b/render.yaml
+index 8126e9e..a8b3f9d 100644
+--- a/render.yaml
++++ b/render.yaml
+@@ -1,9 +1,6 @@
+-databases:
+-  - name: ecommercedb
+-    plan: free
+-    databaseName: ecommerce
+-    user: ecommerce
+-
++# The database is Neon PostgreSQL and product images live in Neon Object
++# Storage, so there is no Render database here. Every `sync: false` value below
++# is a secret you enter once in the Render dashboard (Environment tab).
+ services:
+   - type: web
+     plan: free
+@@ -11,12 +8,40 @@ services:
+     runtime: python
+     buildCommand: "./build.sh"
+     startCommand: "python -m gunicorn ecommerce.asgi:application -k uvicorn.workers.UvicornWorker"
++    healthCheckPath: /healthz/
+     envVars:
+-      - key: DATABASE_URL
+-        fromDatabase:
+-          name: ecommercedb
+-          property: connectionString
++      - key: PYTHON_VERSION
++        value: 3.12.7
++      - key: DEBUG
++        value: "False"
+       - key: SECRET_KEY
+         generateValue: true
+       - key: WEB_CONCURRENCY
+-        value: 4
+\ No newline at end of file
++        value: 2
++
++      # Neon PostgreSQL. DATABASE_URL is the pooled connection string (host
++      # contains "-pooler") used by the running app. DATABASE_URL_UNPOOLED is
++      # the direct string, used only for migrations during the build.
++      - key: DATABASE_URL
++        sync: false
++      - key: DATABASE_URL_UNPOOLED
++        sync: false
++
++      # Neon Object Storage (product images)
++      - key: AWS_STORAGE_BUCKET_NAME
++        sync: false
++      - key: AWS_ENDPOINT_URL_S3
++        sync: false
++      - key: AWS_ACCESS_KEY_ID
++        sync: false
++      - key: AWS_SECRET_ACCESS_KEY
++        sync: false
++      - key: AWS_REGION
++        sync: false
++
++      # Optional: set CREATE_SUPERUSER=1 plus the two values below to create an
++      # admin account on the next deploy.
++      - key: DJANGO_SUPERUSER_EMAIL
++        sync: false
++      - key: DJANGO_SUPERUSER_PASSWORD
++        sync: false

@@ -1,18 +1,17 @@
 from decimal import Decimal
 
 from django.contrib import messages
-from django.db import transaction
 from django.http import Http404, HttpResponseNotAllowed
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.views.decorators.http import require_POST
 
 from ..forms import CheckoutForm
-from ..models import Category, Customer, Order, OrderItem, Product
+from ..models import Category, Customer, Order, Product
+from ..services import MAX_CART_QUANTITY, CheckoutError, create_order
 
 CART_SESSION_KEY = "cart"
 GUEST_ORDERS_SESSION_KEY = "guest_order_ids"
-MAX_CART_QUANTITY = 99
 
 
 def _get_session_cart(request):
@@ -195,78 +194,16 @@ def checkout(request):
             "cart_total": cart_total,
         }, status=400)
 
-    cleaned = form.cleaned_data
     cart = _get_session_cart(request)
-    order = None
-    inventory_errors = []
-
-    # Lock products and validate stock again in the same transaction that creates
-    # the order and decrements inventory. This prevents ordinary concurrent
-    # checkouts from selling the same final unit on databases supporting row locks.
-    with transaction.atomic():
-        ids = [int(product_id) for product_id in cart]
-        locked_products = Product.objects.select_for_update().filter(pk__in=ids).order_by("pk")
-        product_by_id = {str(product.pk): product for product in locked_products}
-        for product_id, quantity in cart.items():
-            product = product_by_id.get(product_id)
-            if product is None or not product.is_active:
-                inventory_errors.append("A product is no longer available. Review your cart.")
-            elif quantity < 1 or quantity > MAX_CART_QUANTITY:
-                inventory_errors.append("A cart quantity is invalid. Review your cart.")
-            elif product.quantity < quantity:
-                inventory_errors.append(f"Only {product.quantity} unit(s) of {product.name} remain. Review your cart.")
-
-        if not inventory_errors:
-            subtotal = sum(
-                (product_by_id[product_id].price * quantity for product_id, quantity in cart.items()),
-                Decimal("0.00"),
-            )
-            customer = None
-            if request.user.is_authenticated:
-                customer, _ = Customer.objects.get_or_create(
-                    user=request.user,
-                    defaults={
-                        "first_name": cleaned["first_name"],
-                        "last_name": cleaned["last_name"],
-                        "email": cleaned["email"],
-                        "phone": cleaned["phone"],
-                    },
-                )
-                # Keep the profile current, but order snapshots below remain stable.
-                customer.first_name = cleaned["first_name"]
-                customer.last_name = cleaned["last_name"]
-                customer.email = cleaned["email"]
-                customer.phone = cleaned["phone"]
-                customer.save(update_fields=["first_name", "last_name", "email", "phone", "updated_at"])
-
-            order = Order.objects.create(
-                customer=customer,
-                client_name=f"{cleaned['first_name']} {cleaned['last_name']}".strip(),
-                client_email=cleaned["email"],
-                client_country=cleaned["country"],
-                client_city=cleaned["city"],
-                client_street=cleaned["street"],
-                client_postal_code=cleaned["postal_code"],
-                subtotal=subtotal,
-                total=subtotal,
-                currency="EUR",
-                payment_status=Order.PaymentStatus.PENDING,
-                fulfillment_status=Order.FulfillmentStatus.PENDING,
-            )
-            for product_id, quantity in cart.items():
-                product = product_by_id[product_id]
-                OrderItem.objects.create(
-                    order=order,
-                    product=product,
-                    quantity=quantity,
-                    unit_price=product.price,
-                )
-                product.quantity -= quantity
-                product.save(update_fields=["quantity", "updated_at"])
-
-    if inventory_errors:
-        for issue in dict.fromkeys(inventory_errors):
-            messages.error(request, issue)
+    try:
+        order = create_order(
+            cart=cart,
+            shipping=form.cleaned_data,
+            user=request.user if request.user.is_authenticated else None,
+        )
+    except CheckoutError as exc:
+        for message in exc.messages:
+            messages.error(request, message)
         return redirect("cart")
 
     # A guest may revisit the confirmation only from the same session. Authenticated
@@ -278,7 +215,7 @@ def checkout(request):
         request.session[GUEST_ORDERS_SESSION_KEY] = guest_order_ids[-20:]
     request.session.pop(CART_SESSION_KEY, None)
     request.session.modified = True
-    messages.success(request, f"Order #{order.pk} was created. Payment is pending.")
+    messages.info(request, f"Order #{order.pk} was created. Payment is pending.")
     return redirect("order_confirmation", order_id=order.pk)
 
 

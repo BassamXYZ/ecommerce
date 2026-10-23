@@ -6,6 +6,7 @@ from django.conf.urls.static import static
 from .views import main, payment, dashboard
 
 urlpatterns = [
+    path("healthz/", main.healthz, name="healthz"),
     path("", main.index, name="index"),
     path("search/", main.search, name="search"),
     path("category/<str:category>", main.category, name="category"),
@@ -18,6 +19,7 @@ urlpatterns = [
     path("checkout/", payment.checkout, name="checkout"),
     path("orders/<int:order_id>/confirmation/", payment.order_confirmation, name="order_confirmation"),
     path("orders/", dashboard.orders, name="orders"),
+    path("orders/<int:order_id>/ship/", dashboard.ship_order, name="ship_order"),
     path("analytics/", dashboard.analytics, name="analytics"),
 ]
 

@@ -1,6 +1,7 @@
 from django.core.paginator import Paginator
 from django.db.models import Prefetch, Q
-from django.http import Http404
+from django.db import connection
+from django.http import Http404, JsonResponse
 from django.shortcuts import get_object_or_404, render
 
 from ..models import Category, Product
@@ -126,3 +127,14 @@ def product(request, category, product):
     if product_obj is None:
         raise Http404("Product not found.")
     return _render_product_detail(request, product_obj)
+
+
+def healthz(request):
+    """Liveness/readiness probe for the hosting platform: checks the database."""
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT 1")
+            cursor.fetchone()
+    except Exception:
+        return JsonResponse({"status": "error"}, status=503)
+    return JsonResponse({"status": "ok"})

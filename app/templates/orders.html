@@ -1,89 +1,32 @@
 {% extends 'base.html' %}
 
-{% block title %}Orders{% endblock %}
+{% block title %}Orders to ship{% endblock %}
 
 {% block content %}
-<div id="orders">
-{% for order in orders %}
-  <div id="{{ order.id }}" class="card m-3">
-    <div class="card-header">
-      <div>
-        Email: {{ order.client_email }}
+<section class="py-4 py-lg-5">
+  <h1 class="h2 mb-4">Orders to ship</h1>
+  {% for order in orders %}
+    <div id="order-{{ order.id }}" class="card mb-3">
+      <div class="card-header">
+        <div><strong>Order #{{ order.id }}</strong> &middot; {{ order.created_at|date:"Y-m-d H:i" }}</div>
+        <div>{{ order.client_name }} &middot; {{ order.client_email }}</div>
+        <div>{{ order.client_street }}, {{ order.client_postal_code }} {{ order.client_city }}, {{ order.client_country }}</div>
+        <div>Total: {{ order.total }} {{ order.currency }} &middot; {{ order.get_fulfillment_status_display }}</div>
       </div>
-      <div>
-        Date: {{ order.date }}
-      </div>
-      <div>
-        Address: {{ order.client_country }}, {{ order.client_city }}, {{ order.client_street }}, {{ order.client_postal_code }}
-      </div>
-      <div>
-        Total: {{ order.total }}
+      <ul class="list-group list-group-flush">
+        {% for item in order.items.all %}
+          <li class="list-group-item">{{ item.product.name }} &times; {{ item.quantity }} &middot; {{ item.unit_price }} each</li>
+        {% endfor %}
+      </ul>
+      <div class="card-footer">
+        <form method="post" action="{% url 'ship_order' order_id=order.id %}">
+          {% csrf_token %}
+          <button class="btn btn-info" type="submit">Mark as shipped</button>
+        </form>
       </div>
     </div>
-    <ul class="list-group list-group-flush">
-      {% for item in order.items %}
-      <li class="list-group-item">
-        <div>
-          Product Name: {{ item.product.name }}
-        </div>
-        <div>
-          Quantity: {{ item.quantity }}
-        </div>
-      </li>
-      {% endfor %}
-    </ul>
-    <div class="card-footer">
-      <button class="btn btn-info" onclick="done({{ order.id }})">Done</button>
-    </div>
-  </div>
+  {% empty %}
+    <p class="text-secondary">No paid orders are waiting to be shipped.</p>
   {% endfor %}
-</div>
-<script>
-  function getCookie(name) {
-    let cookieValue = null;
-    if (document.cookie && document.cookie !== '') {
-      const cookies = document.cookie.split(';');
-      for (let i = 0; i < cookies.length; i++) {
-        const cookie = cookies[i].trim();
-        if (cookie.substring(0, name.length + 1) === (name + '=')) {
-          cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
-          break;
-        }
-      }
-    }
-    return cookieValue;
-  }
-  const csrftoken = getCookie('csrftoken');
-
-  function done(orderId) {
-    var url = "{% url 'orders' %}";
-    fetch(url, {
-      method: "POST",
-      headers: {
-        'Content-type': "application/json",
-        'X-CSRFToken': csrftoken,
-      },
-      body: JSON.stringify({ 'order_id': orderId })
-    }).then(res => res.json()).then(data => {
-      document.getElementById(orderId).remove();
-
-      if (!data) {
-        return
-      }
-
-      let html = '<div id="' + data.id + '" class="card m-3"><div class= "card-header" ><div>Email: '
-        + data.order.email + '</div><div>Address: ' + data.order.address + '</div><div>Total: ' + data.order.total
-        + '</div></div><ul class="list-group list-group-flush">';
-      
-      data.order.items.forEach(item => {
-        html += '<li class="list-group-item"><div>Product Name: ' + item.name + '</div><div>Quantity: '
-          + item.qty + '</div><div>Price: ' + item.price + '</div></li>'
-      });
-      
-      html += '</ul><div class="card-footer"><button class="btn btn-info" onclick="done(' + data.id + ')">Done</button></div></div>';
-
-      document.getElementById("orders").innerHTML += html;
-    })
-  }
-</script>
+</section>
 {% endblock %}

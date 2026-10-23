@@ -497,6 +497,15 @@ class Order(models.Model):
                 condition=Q(discount_amount__lte=F("subtotal")),
                 name="order_discount_not_over_subtotal",
             ),
+            models.CheckConstraint(
+                condition=Q(
+                    total=F("subtotal")
+                    + F("shipping_cost")
+                    + F("tax_amount")
+                    - F("discount_amount")
+                ),
+                name="order_total_matches_components",
+            ),
         ]
 
     def __str__(self):

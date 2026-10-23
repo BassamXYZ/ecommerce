@@ -6,6 +6,7 @@ configuration. A local .env file is loaded when present.
 """
 
 import os
+import sys
 from pathlib import Path
 from urllib.parse import urlparse
 
@@ -47,6 +48,8 @@ if not SECRET_KEY:
 
 DEBUG = env_bool("DEBUG", False)
 
+TESTING = "test" in sys.argv
+
 ALLOWED_HOSTS = env_list(
     "ALLOWED_HOSTS",
     "127.0.0.1,localhost",
@@ -54,10 +57,29 @@ ALLOWED_HOSTS = env_list(
 
 CSRF_TRUSTED_ORIGINS = env_list("CSRF_TRUSTED_ORIGINS")
 
+# Render sets RENDER_EXTERNAL_HOSTNAME (e.g. myshop.onrender.com) for web
+# services, so the deployed site works without hand-written host settings.
+RENDER_EXTERNAL_HOSTNAME = os.getenv("RENDER_EXTERNAL_HOSTNAME")
+if RENDER_EXTERNAL_HOSTNAME:
+    if RENDER_EXTERNAL_HOSTNAME not in ALLOWED_HOSTS:
+        ALLOWED_HOSTS.append(RENDER_EXTERNAL_HOSTNAME)
+    _render_origin = f"https://{RENDER_EXTERNAL_HOSTNAME}"
+    if _render_origin not in CSRF_TRUSTED_ORIGINS:
+        CSRF_TRUSTED_ORIGINS.append(_render_origin)
+
 # Render and other reverse proxies terminate HTTPS before forwarding requests
 # to Django. This tells Django to trust the forwarded HTTPS header.
 if not DEBUG:
     SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+
+# Production hardening. Set SECURE_SSL_REDIRECT=False to run a production-mode
+# container over plain HTTP locally.
+SECURE_SSL_REDIRECT = env_bool("SECURE_SSL_REDIRECT", not DEBUG)
+SECURE_REDIRECT_EXEMPT = [r"^healthz/$"]
+SESSION_COOKIE_SECURE = not DEBUG
+CSRF_COOKIE_SECURE = not DEBUG
+SECURE_HSTS_SECONDS = int(os.getenv("SECURE_HSTS_SECONDS", "0" if DEBUG else "3600"))
+SECURE_CONTENT_TYPE_NOSNIFF = True
 
 
 # ---------------------------------------------------------------------------
@@ -159,20 +181,22 @@ AUTH_PASSWORD_VALIDATORS = [
 
 # In development, print emails to the terminal instead of sending them.
 # In production, use an SMTP provider configured through environment variables.
-EMAIL_BACKEND = (
-    "django.core.mail.backends.console.EmailBackend"
-    if DEBUG
-    else "django.core.mail.backends.smtp.EmailBackend"
-)
-
 EMAIL_HOST = os.getenv("EMAIL_HOST", "localhost")
+EMAIL_HOST_USER = os.getenv("EMAIL_HOST_USER", "")
+EMAIL_HOST_PASSWORD = os.getenv("EMAIL_HOST_PASSWORD", "")
+
+# Use SMTP only when it is actually configured; otherwise print emails to the
+# log so password reset never crashes with a connection error.
+EMAIL_BACKEND = (
+    "django.core.mail.backends.smtp.EmailBackend"
+    if (not DEBUG and EMAIL_HOST_USER)
+    else "django.core.mail.backends.console.EmailBackend"
+)
 EMAIL_PORT = int(os.getenv("EMAIL_PORT", "587"))
 
 EMAIL_USE_TLS = env_bool("EMAIL_USE_TLS", True)
 EMAIL_USE_SSL = env_bool("EMAIL_USE_SSL", False)
 
-EMAIL_HOST_USER = os.getenv("EMAIL_HOST_USER", "")
-EMAIL_HOST_PASSWORD = os.getenv("EMAIL_HOST_PASSWORD", "")
 EMAIL_TIMEOUT = int(os.getenv("EMAIL_TIMEOUT", "10"))
 
 DEFAULT_FROM_EMAIL = os.getenv(
@@ -210,7 +234,13 @@ STORAGES = {
         "BACKEND": "django.core.files.storage.FileSystemStorage",
     },
     "staticfiles": {
-        "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage",
+        # The manifest storage needs `collectstatic` to have run, so tests use
+        # plain storage and work from a fresh clone.
+        "BACKEND": (
+            "django.contrib.staticfiles.storage.StaticFilesStorage"
+            if TESTING
+            else "whitenoise.storage.CompressedManifestStaticFilesStorage"
+        ),
     },
 }
 
@@ -284,13 +314,6 @@ else:
 
 
 # ---------------------------------------------------------------------------
-# Project-specific settings
-# ---------------------------------------------------------------------------
-
-PAYEER_SHOP_ID = os.getenv("PAYEER_SHOP_ID", "12345")
-
-
-# ---------------------------------------------------------------------------
 # Admin notifications
 # ---------------------------------------------------------------------------
 
@@ -300,6 +323,21 @@ ADMIN_EMAIL = os.getenv("ADMIN_EMAIL", "")
 ADMINS = []
 if ADMIN_EMAIL:
     ADMINS = [(ADMIN_NAME, ADMIN_EMAIL)]
+
+
+# ---------------------------------------------------------------------------
+# Logging (Render collects stdout/stderr)
+# ---------------------------------------------------------------------------
+
+LOGGING = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "handlers": {"console": {"class": "logging.StreamHandler"}},
+    "root": {
+        "handlers": ["console"],
+        "level": "CRITICAL" if TESTING else os.getenv("LOG_LEVEL", "INFO"),
+    },
+}
 
 
 # ---------------------------------------------------------------------------
